@@ -8,6 +8,7 @@ import datasets.ss_transforms as tr
 import matplotlib.pyplot as plt
 
 class_eval = [255, 2, 4, 255, 11, 5, 0, 0, 1, 8, 13, 3, 7, 6, 255, 255, 15, 14, 12, 9, 10]
+trasformato = [255, 0, 1, 255, 2, 3, 255, 4, 5, 6,  7,  8,  9, 10, 255, 255,  11, 12, 13, 14, 15, 255, 255, 255]
 
 
 class IDDADataset(VisionDataset):
@@ -24,14 +25,24 @@ class IDDADataset(VisionDataset):
         self.root = root
 
     @staticmethod
-    def get_mapping():
-        classes = class_eval
+    def get_mapping(mappa = class_eval):
+        """
+        mappa le labels che non usiamo a 255 e scala le altre.
+        Esempio:
+        mappa = [255, 0, 1, 2]
+        originale = [3, 2,   0, 2, 1]
+        mappato =   [2, 1, 255, 1, 0]
+        """
+        classes = mappa
         mapping = np.zeros((256,), dtype=np.int64) + 255
         for i, cl in enumerate(classes):
             mapping[i] = cl
         return lambda x: from_numpy(mapping[x])
 
     def __getitem__(self, index: int) -> Any:
+        """
+        :return: torch.tensor()
+        """
         # TODO: missing code here!
         imagePath = os.path.join(self.root, 'images' , self.list_samples[index]+'.jpg')
         labelPath = os.path.join(self.root, 'labels' ,self.list_samples[index]+'.png')
@@ -39,13 +50,10 @@ class IDDADataset(VisionDataset):
         image = Image.open(imagePath)
         label = Image.open(labelPath)
 
-        # ! image e label devono subire la stessa trasformazione di random crop
-        # ! per essere confrontabili nell'evaluation.
-        # ! Entrambi devono essere trasformati in tensore
         if self.transform is not None:
             image, label = self.transform(image, label)
 
-        return image, label
+        return image, IDDADataset.get_mapping(trasformato)(label)
 
     def __len__(self) -> int:
         return len(self.list_samples)
