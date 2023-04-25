@@ -18,6 +18,8 @@ class Centralized:
         self.dataset = dataset
         self.name = self.dataset.client_name
         self.model = model
+        #! da rimuovere se si passa dal main 
+        self.model.to(self.device)
         self.train_loader = DataLoader(self.dataset, batch_size=self.args.bs, shuffle=True, drop_last=True) \
             if not test_client else None
         self.test_loader = DataLoader(self.dataset, batch_size=1, shuffle=False)
@@ -56,15 +58,13 @@ class Centralized:
         (by calling the run_epoch method for each local epoch of training)
         :return: length of the local dataset, copy of the model parameters
         """
-        # TODO: missing code here!
         # define loss and optimizer
-
+        self.model.train()
         # Freeze parameters so we don't backprop through them
         for param in self.model.backbone.parameters():
             param.requires_grad = False
         print('params freezed')
 
-        self.model.to(self.device)
         optimizer = optim.SGD(self.model.classifier.parameters(), lr=0.001, momentum=0.9)
         # Training loop
         n_total_steps = len(self.train_loader)
@@ -93,10 +93,10 @@ class Centralized:
         This method tests the model on the local dataset of the client.
         :param metric: StreamMetric object
         """
-        # TODO: missing code here!
+        self.model.eval()
         with torch.no_grad():
             for i, (images, labels) in enumerate(self.test_loader):
-                #images = images.to(self.device) 
-                #labels = labels.to(self.device)
+                images = images.to(self.device) 
+                labels = labels.to(self.device)
                 outputs = self._get_outputs(images)
                 self.update_metric(metric, outputs, labels)
