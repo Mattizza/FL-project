@@ -62,7 +62,7 @@ class IDDADataset(VisionDataset):
         for t, m, s in zip(tensorImage, mean, std):
             t.mul_(s).add_(m)
         return tensorImage
-
+    #TODO: chimare unNormalized da utils e toglierlo da qui 
     def showImgAndLable(self, index):
         image, label = self.__getitem__(index)
         #unnormalize to show

@@ -5,8 +5,10 @@ from torch import optim, nn
 from collections import defaultdict
 from torch.utils.data import DataLoader
 
-from utils.utils import HardNegativeMining, MeanReduction
+from utils.utils import HardNegativeMining, MeanReduction, unNormalize
 import os
+import matplotlib.pyplot as plt
+
 
 
 
@@ -19,7 +21,7 @@ class Centralized:
         self.name = self.dataset.client_name
         self.model = model
         #! da rimuovere se si passa dal main 
-        self.model.to(self.device)
+        self.model.cuda()
         self.train_loader = DataLoader(self.dataset, batch_size=self.args.bs, shuffle=True, drop_last=True) \
             if not test_client else None
         self.test_loader = DataLoader(self.dataset, batch_size=1, shuffle=False)
@@ -99,4 +101,15 @@ class Centralized:
                 images = images.to(self.device) 
                 labels = labels.to(self.device)
                 outputs = self._get_outputs(images)
-                self.update_metric(metric, outputs, labels)
+                self.updatemetric(metric, outputs, labels)
+    
+    def checkRndImageAndLabel(self, alpha = 0.4):
+        # TODO: abbellire la funzione stampando bordi ed etichette
+        self.model.eval()
+        with torch.no_grad():
+            rnd = torch.randint(low = 0, high = 600, size = (1,)).item()
+            image = self.dataset[rnd][0]
+            outputLogit = self.model(image.view(1, 3, 512, 928))['out'][0]
+            prediction = outputLogit.argmax(0)
+            plt.imshow(unNormalize(image[0].cpu()).permute(1,2,0))
+            plt.imshow(prediction.cpu().numpy(), alpha = alpha)
