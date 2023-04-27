@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 from utils.utils import HardNegativeMining, MeanReduction, unNormalize
 import os
 import matplotlib.pyplot as plt
-
+from torch.optim import lr_scheduler
 
 
 
@@ -53,6 +53,20 @@ class Centralized:
             # TODO: missing code here!
             raise NotImplementedError
 
+    def set_opt(self, params):
+        '''
+        This helper function helps us to fix the optimization hyperparameters of
+        our model. It allows us to specify:
+          -) the optimization algorithm and its parameters
+          -) the rate decay and its parameters
+        '''
+        # Get parameters and retrieve the methods desidered by the user
+        self.params = params
+
+        # We extract the names, we'll need them later to extract the methods as well
+        self.opt, self.sch = params['optimizer']['name'], params['scheduler']['name']
+        self.opt_method, self.sch_method = getattr(optim, self.opt), getattr(lr_scheduler, self.sch)
+
 
     def train(self):
         """
@@ -67,7 +81,19 @@ class Centralized:
             param.requires_grad = False
         print('params freezed')
 
-        optimizer = optim.SGD(self.model.classifier.parameters(), lr=0.001, momentum=0.9)
+        # We build the effective optimizer and scheduler. We need first to
+        # create fake dictionaries to pass as argument.
+        dummy_dict = {'params': self.model.classifier.parameters()}
+        opt_param = self.params['optimizer']['settings']
+        dummy_dict.update(opt_param)
+        self.optimizer = self.opt_method([dummy_dict])
+
+        dummy_dict = {'optimizer': self.optimizer}
+        sch_param = self.params['scheduler']['settings']
+        dummy_dict.update(sch_param)
+        self.scheduler = self.sch_method(**dummy_dict)
+
+
         # Training loop
         n_total_steps = len(self.train_loader)
         for epoch in range(self.args.num_epochs):
@@ -77,12 +103,13 @@ class Centralized:
                 labels = labels.to(self.device)
                 outputs = self._get_outputs(images)
                 loss = self.criterion(outputs,labels.long())
-                optimizer.zero_grad()
+                self.optimizer.zero_grad()
                 loss.mean().backward()
-                optimizer.step()
+                self.optimizer.step()
 
                 if (i+1) % 10 == 0 or i+1 == n_total_steps:
                     print(f'epoch {epoch+1} / {self.args.num_epochs}, step {i+1} / {n_total_steps}, loss = {loss.mean():.3f}')
+            self.scheduler.step()
 
         print("Finish training")
         torch.save(self.model.classifier.state_dict(), 'modelliSalvati/checkpoint.pth')
