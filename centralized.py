@@ -53,6 +53,21 @@ class Centralized:
             # TODO: missing code here!
             raise NotImplementedError
 
+    #TODO hyperparameter tuning
+    """
+    Perprocess:
+        Transformations
+            RandomHorizontalFlip
+            ColorJitter
+            RandomScaleRandomCrop
+            RandomResizedCrop
+    
+    training:
+        lr = [1e-4, 1e-1]
+        optimizer = [adam, sgd, adadelta]
+        bs = [16, 32, 600]
+        dropout rate = [0.5, 0.8]
+    """
 
     def train(self):
         """
@@ -67,7 +82,7 @@ class Centralized:
             param.requires_grad = False
         print('params freezed')
 
-        optimizer = optim.SGD(self.model.classifier.parameters(), lr=0.001, momentum=0.9)
+        optimizer = optim.SGD(self.model.classifier.parameters(), lr=0.0001, momentum=0.9)
         # Training loop
         n_total_steps = len(self.train_loader)
         for epoch in range(self.args.num_epochs):
@@ -89,7 +104,7 @@ class Centralized:
         print("Model saved")
 
 
-
+    #i dati vengono testati sugli stessi dati di training
     def test(self, metric):
         """
         This method tests the model on the local dataset of the client.
@@ -103,12 +118,13 @@ class Centralized:
                 outputs = self._get_outputs(images)
                 self.updatemetric(metric, outputs, labels)
     
+    #TODO: da far funzionare
     def checkRndImageAndLabel(self, alpha = 0.4):
         # TODO: abbellire la funzione stampando bordi ed etichette
         self.model.eval()
         with torch.no_grad():
             rnd = torch.randint(low = 0, high = 600, size = (1,)).item()
-            image = self.dataset[rnd][0]
+            image = self.dataset[rnd][0].cuda()
             outputLogit = self.model(image.view(1, 3, 512, 928))['out'][0]
             prediction = outputLogit.argmax(0)
             plt.imshow(unNormalize(image[0].cpu()).permute(1,2,0))
