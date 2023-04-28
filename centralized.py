@@ -9,7 +9,8 @@ from utils.utils import HardNegativeMining, MeanReduction, unNormalize
 import os
 import matplotlib.pyplot as plt
 from torch.optim import lr_scheduler
-
+import numpy as np
+from matplotlib.patches import Rectangle
 
 
 
@@ -96,8 +97,16 @@ class Centralized:
 
         # Training loop
         n_total_steps = len(self.train_loader)
+        
+        # We initialize these lists in order to store the progresses during the training.
+        self.mean_loss = []
+        self.mean_std  = []
+        self.n_10th_steps = []
+        self.n_epoch_steps = [n_total_steps]
+        count = 0
+        
         for epoch in range(self.args.num_epochs):
-            print("epoca", epoch)
+            print("epoch", epoch)
             for i, (images,labels) in enumerate(self.train_loader):
                 images = images.to(self.device) 
                 labels = labels.to(self.device)
@@ -106,15 +115,68 @@ class Centralized:
                 self.optimizer.zero_grad()
                 loss.mean().backward()
                 self.optimizer.step()
-
+                
+                # We are considering 10 batch at a time. TO DO: define a way to handle different values.
                 if (i+1) % 10 == 0 or i+1 == n_total_steps:
-                    print(f'epoch {epoch+1} / {self.args.num_epochs}, step {i+1} / {n_total_steps}, loss = {loss.mean():.3f}')
+                  
+                  if (i+1) % 10 == 0:
+                    count += 10
+                  else:
+                    count += (i + 1) % 10   # We need to consider the special case in which we have a number of batches different
+                                            # from the steps we fixed (e.g. each 10 steps, but only 7 left)
+                  
+                  # We store all the values of the mean loss and of the std.
+                  self.mean_loss.append(loss.mean().cpu().detach().numpy())
+                  self.mean_std.append(loss.std().cpu().detach().numpy())
+                  self.n_10th_steps.append(count)
+                  print(f'epoch {epoch+1} / {self.args.num_epochs}, step {i+1} / {n_total_steps}, loss = {loss.mean():.3f} ± {(loss.std() / np.sqrt(self.args.bs)):.3f}')
+                
             self.scheduler.step()
+            
+            # We print the predicted steps in order to reach an epoch. During training, it may happen that we need less than this
+            # values (e.g. 37 instead of 40).
+            self.n_epoch_steps.append(self.n_epoch_steps[0] * (epoch + 1))
+            
 
+        self.mean_loss = np.array(self.mean_loss)
+        self.mean_std  = np.array(self.mean_std)
+        
         print("Finish training")
         torch.save(self.model.classifier.state_dict(), 'modelliSalvati/checkpoint.pth')
         print("Model saved")
 
+    # Function used to print the learning curves.
+    def print_learning(self, step, plot_error = False):
+    
+      # We plot vertical lines for each predicted epoch.
+      lines = [plt.axvline(_x, linewidth = 1, color='g', alpha = 0.75,
+                           linestyle = '--') for _x in self.n_epoch_steps]
+      
+      # We plot the loss curve.
+      markers, caps, bars = plt.errorbar(self.n_10th_steps, self.mean_loss, 
+                                         yerr = self.mean_std / np.sqrt(self.args.bs), 
+                                         ecolor = "red", elinewidth = 1.5, 
+                                         capsize = 1.5, capthick = 1.0, 
+                                         color = "blue",
+                                         marker = 'o', fillstyle = 'none')
+      plt.title('Loss')
+
+      # This was done only to plot extra text in the legend.
+      extra = Rectangle((0, 0), 1, 1, fc = "w", fill = False, 
+                        edgecolor = 'none', linewidth = 0)
+      text = f'Optimizer: {self.opt}\nRate decay: {self.sch}'
+      plt.legend([extra, markers, lines[0]], (text, 'Loss ± SE', 'Epoch'))
+
+      # We plot a line for each step (e.g. one line each 10 mini-batches).
+      xticks = np.arange(step, self.args.num_epochs * np.floor(len(self.dataset) / self.args.bs) , step)
+      plt.xticks(xticks)
+      plt.grid(axis = 'x', alpha = 0.5)
+      
+      # We do this in order to consider whether to plot the errors as well
+      [bar.set_alpha(0.3 * plot_error) for bar in bars]
+      [cap.set_alpha(0.3 * plot_error) for cap in caps]
+
+      plt.show()
 
 
     def test(self, metric):
