@@ -45,14 +45,37 @@ class Centralized:
         raise NotImplementedError
 
     def run_epoch(self, cur_epoch, optimizer):
-        """
-        This method locally trains the model with the dataset of the client. It handles the training at mini-batch level
-        :param cur_epoch: current epoch of training
-        :param optimizer: optimizer used for the local training
-        """
-        for cur_step, (images, labels) in enumerate(self.train_loader):
-            # TODO: missing code here!
-            raise NotImplementedError
+      """
+      This method locally trains the model with the dataset of the client. It handles the training at mini-batch level
+      :param cur_epoch: current epoch of training
+      :param optimizer: optimizer used for the local training
+      """
+      print("epoch", cur_epoch)
+      for cur_step, (images, labels) in enumerate(self.train_loader):
+          
+          self.n_total_steps = len(self.train_loader)
+          images = images.to(self.device) 
+          labels = labels.to(self.device)
+          outputs = self._get_outputs(images)
+          loss = self.criterion(outputs,labels.long())
+          self.optimizer.zero_grad()
+          loss.mean().backward()
+          self.optimizer.step()
+          
+          # We are considering 10 batch at a time. TO DO: define a way to handle different values.
+          if (cur_step + 1) % 10 == 0 or cur_step + 1 == self.n_total_steps:
+
+            if (cur_step + 1) % 10 == 0:
+              self.count += 10
+            else:
+              self.count += (cur_step + 1) % 10   # We need to consider the special case in which we have a number of batches different
+                                            # from the steps we fixed (e.g. each 10 steps, but only 7 left)
+              
+            # We store all the values of the mean loss and of the std.
+            self.mean_loss.append(loss.mean().cpu().detach().numpy())
+            self.mean_std.append(loss.std().cpu().detach().numpy())
+            self.n_10th_steps.append(self.count)
+            print(f'epoch {cur_epoch + 1} / {self.args.num_epochs}, step {cur_step + 1} / {self.n_total_steps}, loss = {loss.mean():.3f} ± {(loss.std() / np.sqrt(self.args.bs)):.3f}')
 
     def set_opt(self, params):
         '''
@@ -69,81 +92,81 @@ class Centralized:
         self.opt_method, self.sch_method = getattr(optim, self.opt), getattr(lr_scheduler, self.sch)
 
 
-    def train(self):
-        """
-        This method locally trains the model with the dataset of the client. It handles the training at epochs level
-        (by calling the run_epoch method for each local epoch of training)
-        :return: length of the local dataset, copy of the model parameters
-        """
-        # define loss and optimizer
-        self.model.train()
-        # Freeze parameters so we don't backprop through them
-        for param in self.model.backbone.parameters():
-            param.requires_grad = False
-        print('params freezed')
+    # def train(self):
+    #     """
+    #     This method locally trains the model with the dataset of the client. It handles the training at epochs level
+    #     (by calling the run_epoch method for each local epoch of training)
+    #     :return: length of the local dataset, copy of the model parameters
+    #     """
+    #     # define loss and optimizer
+    #     self.model.train()
+    #     # Freeze parameters so we don't backprop through them
+    #     for param in self.model.backbone.parameters():
+    #         param.requires_grad = False
+    #     print('params freezed')
 
-        # We build the effective optimizer and scheduler. We need first to
-        # create fake dictionaries to pass as argument.
-        dummy_dict = {'params': self.model.classifier.parameters()}
-        opt_param = self.params['optimizer']['settings']
-        dummy_dict.update(opt_param)
-        self.optimizer = self.opt_method([dummy_dict])
+    #     # We build the effective optimizer and scheduler. We need first to
+    #     # create fake dictionaries to pass as argument.
+    #     dummy_dict = {'params': self.model.classifier.parameters()}
+    #     opt_param = self.params['optimizer']['settings']
+    #     dummy_dict.update(opt_param)
+    #     self.optimizer = self.opt_method([dummy_dict])
 
-        dummy_dict = {'optimizer': self.optimizer}
-        sch_param = self.params['scheduler']['settings']
-        dummy_dict.update(sch_param)
-        self.scheduler = self.sch_method(**dummy_dict)
+    #     dummy_dict = {'optimizer': self.optimizer}
+    #     sch_param = self.params['scheduler']['settings']
+    #     dummy_dict.update(sch_param)
+    #     self.scheduler = self.sch_method(**dummy_dict)
 
 
-        # Training loop
-        n_total_steps = len(self.train_loader)
+    #     # Training loop
+    #     n_total_steps = len(self.train_loader)
         
-        # We initialize these lists in order to store the progresses during the training.
-        self.mean_loss = []
-        self.mean_std  = []
-        self.n_10th_steps = []
-        self.n_epoch_steps = [n_total_steps]
-        count = 0
+    #     # We initialize these lists in order to store the progresses during the training.
+    #     self.mean_loss = []
+    #     self.mean_std  = []
+    #     self.n_10th_steps = []
+    #     self.n_epoch_steps = [n_total_steps]
+    #     count = 0
         
-        for epoch in range(self.args.num_epochs):
-            print("epoch", epoch)
-            for i, (images,labels) in enumerate(self.train_loader):
-                images = images.to(self.device) 
-                labels = labels.to(self.device)
-                outputs = self._get_outputs(images)
-                loss = self.criterion(outputs,labels.long())
-                self.optimizer.zero_grad()
-                loss.mean().backward()
-                self.optimizer.step()
+    #     for epoch in range(self.args.num_epochs):
+    #         print("epoch", epoch)
+    #         for i, (images,labels) in enumerate(self.train_loader):
+    #             images = images.to(self.device) 
+    #             labels = labels.to(self.device)
+    #             outputs = self._get_outputs(images)
+    #             loss = self.criterion(outputs,labels.long())
+    #             self.optimizer.zero_grad()
+    #             loss.mean().backward()
+    #             self.optimizer.step()
                 
-                # We are considering 10 batch at a time. TO DO: define a way to handle different values.
-                if (i+1) % 10 == 0 or i+1 == n_total_steps:
+    #             # We are considering 10 batch at a time. TO DO: define a way to handle different values.
+    #             if (i+1) % 10 == 0 or i+1 == n_total_steps:
                   
-                  if (i+1) % 10 == 0:
-                    count += 10
-                  else:
-                    count += (i + 1) % 10   # We need to consider the special case in which we have a number of batches different
-                                            # from the steps we fixed (e.g. each 10 steps, but only 7 left)
+    #               if (i+1) % 10 == 0:
+    #                 count += 10
+    #               else:
+    #                 count += (i + 1) % 10   # We need to consider the special case in which we have a number of batches different
+    #                                         # from the steps we fixed (e.g. each 10 steps, but only 7 left)
                   
-                  # We store all the values of the mean loss and of the std.
-                  self.mean_loss.append(loss.mean().cpu().detach().numpy())
-                  self.mean_std.append(loss.std().cpu().detach().numpy())
-                  self.n_10th_steps.append(count)
-                  print(f'epoch {epoch+1} / {self.args.num_epochs}, step {i+1} / {n_total_steps}, loss = {loss.mean():.3f} ± {(loss.std() / np.sqrt(self.args.bs)):.3f}')
+    #               # We store all the values of the mean loss and of the std.
+    #               self.mean_loss.append(loss.mean().cpu().detach().numpy())
+    #               self.mean_std.append(loss.std().cpu().detach().numpy())
+    #               self.n_10th_steps.append(count)
+    #               print(f'epoch {epoch+1} / {self.args.num_epochs}, step {i+1} / {n_total_steps}, loss = {loss.mean():.3f} ± {(loss.std() / np.sqrt(self.args.bs)):.3f}')
                 
-            self.scheduler.step()
+    #         self.scheduler.step()
             
-            # We print the predicted steps in order to reach an epoch. During training, it may happen that we need less than this
-            # values (e.g. 37 instead of 40).
-            self.n_epoch_steps.append(self.n_epoch_steps[0] * (epoch + 1))
+    #         # We print the predicted steps in order to reach an epoch. During training, it may happen that we need less than this
+    #         # values (e.g. 37 instead of 40).
+    #         self.n_epoch_steps.append(self.n_epoch_steps[0] * (epoch + 1))
             
 
-        self.mean_loss = np.array(self.mean_loss)
-        self.mean_std  = np.array(self.mean_std)
+    #     self.mean_loss = np.array(self.mean_loss)
+    #     self.mean_std  = np.array(self.mean_std)
         
-        print("Finish training")
-        torch.save(self.model.classifier.state_dict(), 'modelliSalvati/checkpoint.pth')
-        print("Model saved")
+    #     print("Finish training")
+    #     torch.save(self.model.classifier.state_dict(), 'modelliSalvati/checkpoint.pth')
+    #     print("Model saved")
 
     # Function used to print the learning curves.
     def print_learning(self, step, plot_error = False):
@@ -178,6 +201,57 @@ class Centralized:
 
       plt.show()
 
+    def train_2(self):
+        """
+        This method locally trains the model with the dataset of the client. It handles the training at epochs level
+        (by calling the run_epoch method for each local epoch of training)
+        :return: length of the local dataset, copy of the model parameters
+        """
+        
+        # define loss and optimizer
+        self.model.train()
+        
+        # Freeze parameters so we don't backprop through them
+        for param in self.model.backbone.parameters():
+            param.requires_grad = False
+        print('params freezed')
+
+        # We build the effective optimizer and scheduler. We need first to
+        # create fake dictionaries to pass as argument.
+        dummy_dict = {'params': self.model.classifier.parameters()}
+        opt_param = self.params['optimizer']['settings']
+        dummy_dict.update(opt_param)
+        self.optimizer = self.opt_method([dummy_dict])
+
+        dummy_dict = {'optimizer': self.optimizer}
+        sch_param = self.params['scheduler']['settings']
+        dummy_dict.update(sch_param)
+        self.scheduler = self.sch_method(**dummy_dict)
+
+        # Training loop
+        self.n_total_steps = len(self.train_loader)
+        self.mean_loss = []
+        self.mean_std  = []
+        self.n_10th_steps = []
+        self.n_epoch_steps = [self.n_total_steps]
+        self.count = 0
+
+        for epoch in range(self.args.num_epochs):
+
+            self.run_epoch(epoch, self.optimizer)
+            self.scheduler.step()
+                
+            # We print the predicted steps in order to reach an epoch. During training, it may happen that we need less than this
+            # values (e.g. 37 instead of 40).
+            self.n_epoch_steps.append(self.n_epoch_steps[0] * (epoch + 1))
+                
+
+        self.mean_loss = np.array(self.mean_loss)
+        self.mean_std  = np.array(self.mean_std)
+        
+        print("Finish training")
+        torch.save(self.model.classifier.state_dict(), 'modelliSalvati/checkpoint.pth')
+        print("Model saved")
 
     def test(self, metric):
         """
