@@ -17,6 +17,7 @@ from matplotlib.patches import Rectangle
 class Centralized:
 
     def __init__(self, args, dataset, model, test_client=False):
+        
         self.args = args
         self.dataset = dataset
         self.name = self.dataset.client_name
@@ -38,56 +39,70 @@ class Centralized:
         metric.update(labels, prediction)
 
     def _get_outputs(self, images):
+        
         if self.args.model == 'deeplabv3_mobilenetv2':
             return self.model(images)['out']
+        
         if self.args.model == 'resnet18':
             return self.model(images)
-        raise NotImplementedError
 
-    def run_epoch(self, cur_epoch, optimizer):
-      """
-      This method locally trains the model with the dataset of the client. It handles the training at mini-batch level
-      :param cur_epoch: current epoch of training
-      :param optimizer: optimizer used for the local training
-      """
-      print("epoch", cur_epoch)
-      for cur_step, (images, labels) in enumerate(self.train_loader):
-          
-          self.n_total_steps = len(self.train_loader)
-          images = images.to(self.device) 
-          labels = labels.to(self.device)
-          outputs = self._get_outputs(images)
-          loss = self.criterion(outputs,labels.long())
-          self.optimizer.zero_grad()
-          loss.mean().backward()
-          self.optimizer.step()
-          
-          # We are considering 10 batch at a time. TO DO: define a way to handle different values.
-          if (cur_step + 1) % 10 == 0 or cur_step + 1 == self.n_total_steps:
-
-            if (cur_step + 1) % 10 == 0:
-              self.count += 10
-            else:
-              self.count += (cur_step + 1) % 10   # We need to consider the special case in which we have a number of batches different
-                                            # from the steps we fixed (e.g. each 10 steps, but only 7 left)
-              
-            # We store all the values of the mean loss and of the std.
-            self.mean_loss.append(loss.mean().cpu().detach().numpy())
-            self.mean_std.append(loss.std().cpu().detach().numpy())
-            self.n_10th_steps.append(self.count)
-            print(f'epoch {cur_epoch + 1} / {self.args.num_epochs}, step {cur_step + 1} / {self.n_total_steps}, loss = {loss.mean():.3f} ± {(loss.std() / np.sqrt(self.args.bs)):.3f}')
-
-    def set_opt(self, params):
+    def run_epoch(self, cur_epoch, n_steps: int) -> None:
         '''
-        This helper function helps us to fix the optimization hyperparameters of
-        our model. It allows us to specify:
-          -) the optimization algorithm and its parameters
-          -) the rate decay and its parameters
+        This method locally trains the model with the dataset of the client. It handles the training at mini-batch level.
+            -) cur_epoch: current epoch of training;
+            -) optimizer: optimizer used for the local training.
         '''
-        # Get parameters and retrieve the methods desidered by the user
+
+        print('epoch', cur_epoch + 1)
+        for cur_step, (images, labels) in enumerate(self.train_loader):
+                
+            # Total steps needed to complete an epoch. Computed as:
+            # 
+            #           self.n_total_steps = floor(len(self.dataset) / self.args.bs).
+            # 
+            # Example: len(self.dataset) = 600, self.args.bs = 16, self.n_total_steps = 37
+            self.n_total_steps = len(self.train_loader)
+            
+            images = images.to(self.device) 
+            labels = labels.to(self.device)
+            outputs = self._get_outputs(images)
+            
+            loss = self.criterion(outputs,labels.long())
+            self.optimizer.zero_grad()
+            loss.mean().backward()
+            self.optimizer.step()
+            
+            # We are considering 10 batch at a time. TO DO: define a way to handle different values.
+            # We are considering n_steps batch at a time.
+            if (cur_step + 1) % n_steps == 0 or cur_step + 1 == self.n_total_steps:
+
+                # We store the information about the steps using self.count. This is needed if we want to plot the learning curve.
+                if (cur_step + 1) % n_steps == 0:
+                    self.count += n_steps
+                else:
+                    self.count += (cur_step + 1) % n_steps  # We need to consider the special case in which we have a number of batches
+                                                            # different from the steps we fixed (e.g. each 10 steps, but only 7 left).
+                
+                # We store the values of the mean loss and of the std each n_steps mini-batches (e.g. mean loss of the 10th mini-batch).
+                self.mean_loss.append(loss.mean().cpu().detach().numpy())
+                self.mean_std.append(loss.std().cpu().detach().numpy())
+                
+                # We store the information related to the step in which we computed the loss of the n_steps-th mini-batch. This will
+                # be of use when plotting the learning curve.
+                self.n_10th_steps.append(self.count)
+                print(f'epoch {cur_epoch + 1} / {self.args.num_epochs}, step {cur_step + 1} / {self.n_total_steps}, loss = {loss.mean():.3f} ± {(loss.std() / np.sqrt(self.args.bs)):.3f}')
+
+    def set_opt(self, params: dict) -> None:
+        '''
+        This helper function supports us when passing the optimization hyperparameters.
+          -) the optimization algorithm and its parameters;
+          -) the rate decay and its parameters.
+        '''
+
+        # Get parameters and retrieve the methods desidered by the user.
         self.params = params
 
-        # We extract the names, we'll need them later to extract the methods as well
+        # We extract the names, we'll need them later to extract the methods as well.
         self.opt, self.sch = params['optimizer']['name'], params['scheduler']['name']
         self.opt_method, self.sch_method = getattr(optim, self.opt), getattr(lr_scheduler, self.sch)
 
@@ -168,56 +183,63 @@ class Centralized:
     #     torch.save(self.model.classifier.state_dict(), 'modelliSalvati/checkpoint.pth')
     #     print("Model saved")
 
-    # Function used to print the learning curves.
-    def print_learning(self, step, plot_error = False):
-    
-      # We plot vertical lines for each predicted epoch.
-      lines = [plt.axvline(_x, linewidth = 1, color='g', alpha = 0.75,
-                           linestyle = '--') for _x in self.n_epoch_steps]
-      
-      # We plot the loss curve.
-      markers, caps, bars = plt.errorbar(self.n_10th_steps, self.mean_loss, 
-                                         yerr = self.mean_std / np.sqrt(self.args.bs), 
-                                         ecolor = "red", elinewidth = 1.5, 
-                                         capsize = 1.5, capthick = 1.0, 
-                                         color = "blue",
-                                         marker = 'o', fillstyle = 'none')
-      plt.title('Loss')
+    def print_learning(self, step: int, plot_error = False) -> None:
+        '''
+        Function used to print the learning curves.
+        -) step: how many steps we want to wait until plotting the loss;
+        -) plot_error: whether we want to plot the std of the loss.
+        '''
+        
+        # We need arrays in order to plot the results.
+        self.mean_loss = np.array(self.mean_loss)
+        self.mean_std  = np.array(self.mean_std)
 
-      # This was done only to plot extra text in the legend.
-      extra = Rectangle((0, 0), 1, 1, fc = "w", fill = False, 
-                        edgecolor = 'none', linewidth = 0)
-      text = f'Optimizer: {self.opt}\nRate decay: {self.sch}'
-      plt.legend([extra, markers, lines[0]], (text, 'Loss ± SE', 'Epoch'))
+        # We plot vertical lines for each epoch. Notice that the epoch may not be a multiple of the argument step, since
+        # len(self.dataset) may not be perfectly divisible by self.args.bs (e.g. step = 10, self.n_total_steps = 37).
+        lines = [plt.axvline(_x, linewidth = 1, color = 'g', alpha = 0.75,
+                            linestyle = '--') for _x in self.n_epoch_steps]
+        
+        # We plot the loss curve uing plt.errorbar since we may want to include the std as well.
+        markers, caps, bars = plt.errorbar(self.n_10th_steps, self.mean_loss, 
+                                            yerr = self.mean_std / np.sqrt(self.args.bs),   # We consider the SE of the mean.
+                                            ecolor = 'red', elinewidth = 1.5, 
+                                            capsize = 1.5, capthick = 1.0, 
+                                            color = 'blue',
+                                            marker = 'o', fillstyle = 'none')
+        plt.title('Loss')
 
-      # We plot a line for each step (e.g. one line each 10 mini-batches).
-      xticks = np.arange(step, self.args.num_epochs * np.floor(len(self.dataset) / self.args.bs) , step)
-      plt.xticks(xticks)
-      plt.grid(axis = 'x', alpha = 0.5)
-      
-      # We do this in order to consider whether to plot the errors as well
-      [bar.set_alpha(0.3 * plot_error) for bar in bars]
-      [cap.set_alpha(0.3 * plot_error) for cap in caps]
+        # This was done only to plot extra text in the legend, namely the optimizer and the rate decay method we chose.
+        extra = Rectangle((0, 0), 1, 1, fc = "w", fill = False, 
+                            edgecolor = 'none', linewidth = 0)
+        text = f'Optimizer: {self.opt}\nRate decay: {self.sch}'
+        plt.legend([extra, markers, lines[0]], (text, 'Loss ± SE', 'Epoch'))
 
-      plt.show()
+        # We plot a line for each step (e.g. one line each n_steps mini-batches).
+        xticks = np.arange(step, self.args.num_epochs * np.floor(len(self.dataset) / self.args.bs) , step)
+        plt.xticks(xticks)
+        plt.grid(axis = 'x', alpha = 0.5)
+        
+        # We do this in order to consider whether to plot the errors as well.
+        [bar.set_alpha(0.3 * plot_error) for bar in bars]
+        [cap.set_alpha(0.3 * plot_error) for cap in caps]
 
-    def train_2(self):
-        """
+        plt.show()
+
+    def train(self, n_steps: int):
+        '''
         This method locally trains the model with the dataset of the client. It handles the training at epochs level
         (by calling the run_epoch method for each local epoch of training)
         :return: length of the local dataset, copy of the model parameters
-        """
+        '''
         
-        # define loss and optimizer
         self.model.train()
         
-        # Freeze parameters so we don't backprop through them
+        # Freeze parameters so we don't backprop through them.
         for param in self.model.backbone.parameters():
             param.requires_grad = False
-        print('params freezed')
+        print('Params freezed')
 
-        # We build the effective optimizer and scheduler. We need first to
-        # create fake dictionaries to pass as argument.
+        # We build the effective optimizer and scheduler. We need first to create fake dictionaries to pass as argument.
         dummy_dict = {'params': self.model.classifier.parameters()}
         opt_param = self.params['optimizer']['settings']
         dummy_dict.update(opt_param)
@@ -228,7 +250,9 @@ class Centralized:
         dummy_dict.update(sch_param)
         self.scheduler = self.sch_method(**dummy_dict)
 
-        # Training loop
+
+        # Training loop. We initialize some empty lists because we need to store the information about the statistics computed
+        # on the mini-batches.
         self.n_total_steps = len(self.train_loader)
         self.mean_loss = []
         self.mean_std  = []
@@ -236,22 +260,20 @@ class Centralized:
         self.n_epoch_steps = [self.n_total_steps]
         self.count = 0
 
+        # We iterate over the epochs.
         for epoch in range(self.args.num_epochs):
 
-            self.run_epoch(epoch, self.optimizer)
+            self.run_epoch(epoch, self.optimizer, n_steps)
             self.scheduler.step()
                 
-            # We print the predicted steps in order to reach an epoch. During training, it may happen that we need less than this
-            # values (e.g. 37 instead of 40).
+            # Here we are simply computing how many steps do we need to complete an epoch.
             self.n_epoch_steps.append(self.n_epoch_steps[0] * (epoch + 1))
                 
-
-        self.mean_loss = np.array(self.mean_loss)
-        self.mean_std  = np.array(self.mean_std)
         
-        print("Finish training")
+        print('Training finished!')
         torch.save(self.model.classifier.state_dict(), 'modelliSalvati/checkpoint.pth')
-        print("Model saved")
+        print('Model saved!')
+
 
     def test(self, metric):
         """
