@@ -88,20 +88,20 @@ class Centralized:
         for epoch in range(self.args.num_epochs):
             print("epoca", epoch)
             for i, (images,labels) in enumerate(self.train_loader):
-                images = images.to(self.device) 
-                labels = labels.to(self.device)
+                images = images.to(self.device, dtype = torch.float32) 
+                labels = labels.to(self.device, dtype = torch.long)
                 outputs = self._get_outputs(images)
-                loss = self.criterion(outputs,labels.long())
+                loss = self.reduction(self.criterion(outputs,labels), labels)
                 optimizer.zero_grad()
-                loss.mean().backward()
+                loss.backward()
                 optimizer.step()
 
                 if (i+1) % 10 == 0 or i+1 == n_total_steps:
                     print(f'epoch {epoch+1} / {self.args.num_epochs}, step {i+1} / {n_total_steps}, loss = {loss.mean():.3f}')
 
         print("Finish training")
-        torch.save(self.model.classifier.state_dict(), 'modelliSalvati/checkpoint.pth')
-        print("Model saved")
+        #torch.save(self.model.classifier.state_dict(), 'modelliSalvati/checkpoint.pth')
+        #print("Model saved")
 
 
     #i dati vengono testati sugli stessi dati di training
