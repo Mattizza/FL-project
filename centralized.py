@@ -107,7 +107,7 @@ class Centralized:
           -) the optimization algorithm and its parameters;
           -) the rate decay and its parameters.
         '''
-
+        
         # Get parameters and retrieve the methods desidered by the user.
         self.params = params
 
