@@ -8,7 +8,6 @@ import datasets.ss_transforms as tr
 import matplotlib.pyplot as plt
 
 class_eval = [255, 2, 4, 255, 11, 5, 0, 0, 1, 8, 13, 3, 7, 6, 255, 255, 15, 14, 12, 9, 10]
-trasformato = [255, 0, 1, 255, 2, 3, 255, 4, 5, 6,  7,  8,  9, 10, 255, 255,  11, 12, 13, 14, 15, 255, 255, 255]
 
 
 class IDDADataset(VisionDataset):
@@ -25,7 +24,7 @@ class IDDADataset(VisionDataset):
         self.root = root
 
     @staticmethod
-    def get_mapping(mappa = class_eval):
+    def get_mapping():
         """
         mappa le labels che non usiamo a 255 e scala le altre.
         Esempio:
@@ -33,7 +32,7 @@ class IDDADataset(VisionDataset):
         originale = [3, 2,   0, 2, 1]
         mappato =   [2, 1, 255, 1, 0]
         """
-        classes = mappa
+        classes = class_eval
         mapping = np.zeros((256,), dtype=np.int64) + 255
         for i, cl in enumerate(classes):
             mapping[i] = cl
@@ -52,8 +51,11 @@ class IDDADataset(VisionDataset):
 
         if self.transform is not None:
             image, label = self.transform(image, label)
+        
+        if self.target_transform is not None:
+            label = self.target_transform(label)
 
-        return image, IDDADataset.get_mapping(trasformato)(label)
+        return image, label
 
     def __len__(self) -> int:
         return len(self.list_samples)
@@ -62,7 +64,8 @@ class IDDADataset(VisionDataset):
         for t, m, s in zip(tensorImage, mean, std):
             t.mul_(s).add_(m)
         return tensorImage
-    #TODO: chimare unNormalized da utils e toglierlo da qui 
+    
+    #TODO: chiamare unNormalized da utils e toglierlo da qui 
     def showImgAndLable(self, index):
         image, label = self.__getitem__(index)
         #unnormalize to show
