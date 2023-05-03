@@ -1,6 +1,6 @@
 import copy
 from collections import OrderedDict
-
+from centralized import Centralized
 import numpy as np
 import torch
 
@@ -33,8 +33,8 @@ class Server:
         """
         updates = []
         for i, c in enumerate(clients):
-            # TODO: missing code here!
-            raise NotImplementedError
+            c.train()
+            updates.append(self.model.state_dict())
         return updates #nel setting centralized restituisce direttamente i pesi
 
     def aggregate(self, updates):

@@ -19,6 +19,7 @@ from utils.args import get_parser
 from datasets.idda import IDDADataset
 from models.deeplabv3 import deeplabv3_mobilenetv2
 from utils.stream_metrics import StreamSegMetrics, StreamClsMetrics
+from centralized import Centralized
 
 
 def set_seed(random_seed):
@@ -168,11 +169,20 @@ def set_metrics(args):
 
 
 def gen_clients(args, train_datasets, test_datasets, model):
-    clients = [[], []]
-    for i, datasets in enumerate([train_datasets, test_datasets]):
-        for ds in datasets:
-            clients[i].append(Client(args, ds, model, test_client=i == 1))
+    if (args.dataset == 'idda') :
+        clients = [[], []]
+        for i, datasets in enumerate([train_datasets, test_datasets]):
+            for ds in datasets:
+                clients[i].append(Client(args, ds, model, test_client=i == 1))
+
+    elif args.dataset == 'iddaCB':
+        clients = [[], []]
+        for i, datasets in enumerate([train_datasets, test_datasets]):
+            for ds in datasets:
+                clients[i].append(Centralized(args, ds, model, test_client=i == 1))
+
     return clients[0], clients[1]
+
 
 
 def main():
