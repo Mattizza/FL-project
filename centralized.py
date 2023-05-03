@@ -80,7 +80,7 @@ class Centralized:
             
             # We keep track of the loss. Notice we are storing the loss for
             # each mini-batch.
-            wandb.log({"loss": loss.mean()})
+            #wandb.log({"loss": loss.mean()})
             
             # We are considering 10 batch at a time. TO DO: define a way to handle different values.
             # We are considering n_steps batch at a time.
