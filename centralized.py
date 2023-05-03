@@ -171,13 +171,14 @@ class Centralized:
         self.model.train()
         
         # Freeze parameters so we don't backprop through them.
-        for param in self.model.backbone.parameters():
-            param.requires_grad = False
+        #!for param in self.model.backbone.parameters():
+        #!    param.requires_grad = False
             
-        print('Params freezed')
+        #!print('Params freezed')
 
         # We build the effective optimizer and scheduler. We need first to create fake dictionaries to pass as argument.
-        dummy_dict = {'params': self.model.classifier.parameters()}
+        #!dummy_dict = {'params': self.model.classifier.parameters()}
+        dummy_dict = {'params': self.model.parameters()}
         opt_param = self.params['optimizer']['settings']
         dummy_dict.update(opt_param)
         self.optimizer = self.opt_method([dummy_dict])
@@ -222,8 +223,8 @@ class Centralized:
                 
         
         print('Training finished!')
-        torch.save(self.model.classifier.state_dict(), 'modelliSalvati/checkpoint.pth')
-        print('Model saved!')
+        #!torch.save(self.model.classifier.state_dict(), 'modelliSalvati/checkpoint.pth')
+        #!print('Model saved!')
 
 
 
@@ -248,10 +249,12 @@ class Centralized:
         :param int ix: index of the image in self.dataset
         :param float alpha: transparency index
         """
-        img = self.dataset[ix][0].cuda()
-        outputLogit = self.model(img.view(1, 3, 512, 928))['out'][0]
-        prediction = outputLogit.argmax(0)
-        label2color = Label2Color(idda_16_cmap())
-        pred_mask = label2color(prediction.cpu()).astype(np.uint8)
-        plt.imshow(unNormalize(img.cpu()).permute(1,2,0))
-        plt.imshow(pred_mask, alpha = alpha)
+        self.model.eval()
+        with torch.no_grad():
+            img = self.dataset[ix][0].cuda()
+            outputLogit = self.model(img.view(1, 3, 512, 928))['out'][0]
+            prediction = outputLogit.argmax(0)
+            label2color = Label2Color(idda_16_cmap())
+            pred_mask = label2color(prediction.cpu()).astype(np.uint8)
+            plt.imshow(unNormalize(img.cpu()).permute(1,2,0))
+            plt.imshow(pred_mask, alpha = alpha)
