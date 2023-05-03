@@ -16,6 +16,7 @@ class Server:
         self.model_params_dict = copy.deepcopy(self.model.state_dict())
         #per setting centralized
         self.params = None
+        self.mious = {'Unique':[], "test_same_dom":[], "test_diff_dom":[]}
 
     def select_clients(self):
         num_clients = min(self.args.clients_per_round, len(self.train_clients))
@@ -56,7 +57,7 @@ class Server:
         """
         for r in range(self.args.num_rounds):
             #
-            self.parmas = self.train_round(self.train_clients[0])
+            self.model_params_dict = self.train_round(self.train_clients[0])
             state_dict  = torch.load('modelliSalvati/checkpoint.pth')
             self.model.classifier.load_state_dict(state_dict)
 
@@ -93,3 +94,6 @@ class Server:
     
     def load_server_model_on_client(self, client):
         client.model.load_state_dict(self.model_params_dict)
+
+
+    
