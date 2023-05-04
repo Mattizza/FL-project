@@ -100,7 +100,7 @@ class Centralized:
                 # We store the information related to the step in which we computed the loss of the n_steps-th mini-batch. This will
                 # be of use when plotting the learning curve.
                 self.n_10th_steps.append(self.count)
-                print(f'epoch {cur_epoch + 1} / {self.args.num_epochs}, step {cur_step + 1} / {self.n_total_steps}, loss = {loss.mean():.3f} ± {(loss.std() / np.sqrt(self.args.bs)):.3f}')
+                print(f'epoch {cur_epoch + 1} / {self.args.num_epochs}, step {cur_step + 1} / {self.n_total_steps}, loss = {loss.mean():.3f}')
 
 
     def set_opt(self, params: dict) -> None:

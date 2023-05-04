@@ -75,9 +75,11 @@ class Server:
         for client in self.train_clients:
             print(f"Testing client {client.name}...")
             metric = self.metrics['test_same_dom']
-            client.test(metric)
-            self.mious['Unique'].append(metric.get_results()['Mean IoU'])
             metric.reset()
+            client.test(metric)
+            miou = metric.get_results()['Mean IoU']
+            print(f'Mean IoU: {miou:.2%}')
+            self.mious['Unique'].append(miou)
      
         
   
@@ -92,9 +94,11 @@ class Server:
             print(f"Testing client {client.name}...")
             self.load_server_model_on_client(client)
             metric = self.metrics[client.name]
-            client.test(metric)
-            self.mious[client.name].append(metric.get_results()['Mean IoU'])
             metric.reset()
+            client.test(metric)
+            miou = metric.get_results()['Mean IoU']
+            print(f'Mean IoU: {miou:.2%}')
+            self.mious[client.name].append(miou)
 
 
    
