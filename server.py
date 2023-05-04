@@ -1,6 +1,6 @@
 import copy
 from collections import OrderedDict
-
+from centralized import Centralized
 import numpy as np
 import torch
 
@@ -16,6 +16,7 @@ class Server:
         self.model_params_dict = copy.deepcopy(self.model.state_dict())
         #per setting centralized
         self.params = None
+        self.mious = {'Unique':[], "test_same_dom":[], "test_diff_dom":[]}
 
     def select_clients(self):
         num_clients = min(self.args.clients_per_round, len(self.train_clients))
@@ -31,9 +32,9 @@ class Server:
         Fa il train sul trainClient (train.txt)
         """
         updates = []
-        for i, c in enumerate(clients):
-            # TODO: missing code here!
-            raise NotImplementedError
+        for i, client in enumerate(clients):
+            client.train()
+            updates.append(copy.deepcopy(self.model.state_dict())) 
         return updates #nel setting centralized restituisce direttamente i pesi
 
     def aggregate(self, updates):
@@ -42,8 +43,9 @@ class Server:
         :param updates: updates received from the clients
         :return: aggregated parameters
         """
-        # TODO: missing code here!
-        raise NotImplementedError
+        if self.args.dataset == "iddaCB":
+            return updates[0]
+        return None
 
     def train(self):
         """
@@ -54,29 +56,31 @@ class Server:
         chiama eval_train (train.txt) che fa l'evaluation sul train client e test()
         che fa l'evaluation su entrambi i test clients (test_same_dom e test_diff_dom)
         """
-        for r in range(self.args.num_rounds):
-            #
-            self.parmas = self.train_round(self.train_clients[0])
+        for round in range(self.args.num_rounds):
+            print(f'round {round+1}')
+            self.model_params_dict = self.train_round(self.train_clients)[0]
             state_dict  = torch.load('modelliSalvati/checkpoint.pth')
             self.model.classifier.load_state_dict(state_dict)
 
             self.eval_train()
             self.test()
 
+        
 
-
-            # TODO: missing code here!
-            raise NotImplementedError
 
     def eval_train(self):
         """
         This method handles the evaluation on the train clients
         """
-        # TODO: missing code here!
-        client = self.train_clients[0]
-        print(f"Testing client {client.name}...")
+        for client in self.train_clients:
+            print(f"Testing client {client.name}...")
+            metric = self.metrics['test_same_dom']
+            client.test(metric)
+            self.mious['Unique'].append(metric.get_results()['Mean IoU'])
+            metric.reset()
+     
         
-        raise NotImplementedError
+  
 
     def test(self):
         """
@@ -87,9 +91,16 @@ class Server:
         for client in self.test_clients:
             print(f"Testing client {client.name}...")
             self.load_server_model_on_client(client)
+            metric = self.metrics[client.name]
+            client.test(metric)
+            self.mious[client.name].append(metric.get_results()['Mean IoU'])
+            metric.reset()
 
 
-        raise NotImplementedError
+   
     
     def load_server_model_on_client(self, client):
         client.model.load_state_dict(self.model_params_dict)
+
+
+    

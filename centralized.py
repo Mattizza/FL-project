@@ -80,7 +80,7 @@ class Centralized:
             
             # We keep track of the loss. Notice we are storing the loss for
             # each mini-batch.
-            wandb.log({"loss": loss.mean()})
+            #wandb.log({"loss": loss.mean()})
             
             # We are considering 10 batch at a time. TO DO: define a way to handle different values.
             # We are considering n_steps batch at a time.
@@ -161,7 +161,7 @@ class Centralized:
         plt.show()
 
 
-    def train(self, n_steps: int):
+    def train(self, n_steps=10):
         '''
         This method locally trains the model with the dataset of the client. It handles the training at epochs level
         (by calling the run_epoch method for each local epoch of training)
@@ -200,17 +200,17 @@ class Centralized:
 
         # We initialize a run. We define the name of the project
         # and the configuration, as well as some notes and tags.
-        run = wandb.init(     
+        #run = wandb.init(     
                                  
-          # Set the project where this run will be logged
-          project = "testing",                                # We create a project with a given name.
+        #   # Set the project where this run will be logged
+        #   project = "testing",                                # We create a project with a given name.
           
-          # Track hyperparameters and run metadata
-          config = self.params,
+        #   # Track hyperparameters and run metadata
+        #   config = self.params,
 
-          notes = "My first experiment",                      # We can add notes...
-          tags = ["baseline", "paper1"]                       # ...and tags as well.
-          )
+        #   notes = "My first experiment",                      # We can add notes...
+        #   tags = ["baseline", "paper1"]                       # ...and tags as well.
+        #   )
 
         # We iterate over the epochs.
         for epoch in range(self.args.num_epochs):
