@@ -16,7 +16,7 @@ class Server:
         self.model_params_dict = copy.deepcopy(self.model.state_dict())
         #per setting centralized
         self.params = None
-        self.mious = {'Unique':[], "test_same_dom":[], "test_diff_dom":[]}
+        self.mious = {'eval_train':[], "test_same_dom":[], "test_diff_dom":[]}
 
     def select_clients(self):
         num_clients = min(self.args.clients_per_round, len(self.train_clients))
@@ -33,9 +33,11 @@ class Server:
         """
         updates = []
         for i, client in enumerate(clients):
+            self.load_server_model_on_client(client)
             client.train()
-            updates.append(copy.deepcopy(self.model.state_dict())) 
-        return updates #nel setting centralized restituisce direttamente i pesi
+            client_update = copy.deepcopy(client.model.state_dict())
+            updates.append(client_update)
+        return updates #una lista di model.state_dict() dei diversi clients
 
     def aggregate(self, updates):
         """
@@ -43,9 +45,11 @@ class Server:
         :param updates: updates received from the clients
         :return: aggregated parameters
         """
-        if self.args.dataset == "iddaCB":
+        if self.args.dataset == 'iddaCB':
             return updates[0]
-        return None
+        
+        elif self.args.dataset == 'idda':
+            raise NotImplementedError
 
     def train(self):
         """
@@ -58,9 +62,9 @@ class Server:
         """
         for round in range(self.args.num_rounds):
             print(f'round {round+1}')
-            self.model_params_dict = self.train_round(self.train_clients)[0]
-            state_dict  = torch.load('modelliSalvati/checkpoint.pth')
-            self.model.classifier.load_state_dict(state_dict)
+            updates = self.train_round(self.train_clients)
+            new_state_dict = self.aggregate(updates)
+            self.model_params_dict = new_state_dict
 
             self.eval_train()
             self.test()
@@ -70,26 +74,33 @@ class Server:
 
     def eval_train(self):
         """
-        This method handles the evaluation on the train clients
+        This method handles the evaluation on the train clients.
+        Reset the metrics computed at the previous round, load the model on each
+        train client, test the model on the client dataset, update the
+        StreamMetric (SM) object. (Note: there is just a single SM obj for all the
+        training clients).
         """
+
+        metric = self.metrics['eval_train']
+        metric.reset()
         for client in self.train_clients:
             print(f"Testing client {client.name}...")
-            metric = self.metrics['test_same_dom']
-            metric.reset()
+            self.load_server_model_on_client(client)
             client.test(metric)
-            miou = metric.get_results()['Mean IoU']
-            print(f'Mean IoU: {miou:.2%}')
-            self.mious['Unique'].append(miou)
+
+        miou = metric.get_results()['Mean IoU']
+        print(f'Mean IoU: {miou:.2%}')
+        self.mious['eval_train'].append(miou)
      
         
   
 
     def test(self):
         """
-            This method handles the test on the test clients
+        This method handles the test on the test clients.
+        Load the server model on each test client, reset the previously computed
+        metrics, test the model on the test client's dataset
         """
-        # TODO: missing code here!
-
         for client in self.test_clients:
             print(f"Testing client {client.name}...")
             self.load_server_model_on_client(client)
@@ -101,8 +112,6 @@ class Server:
             self.mious[client.name].append(miou)
 
 
-   
-    
     def load_server_model_on_client(self, client):
         client.model.load_state_dict(self.model_params_dict)
 
