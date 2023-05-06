@@ -12,6 +12,7 @@ from torch.optim import lr_scheduler
 import numpy as np
 from matplotlib.patches import Rectangle
 import wandb
+from inspect import signature
 
 
 
@@ -159,68 +160,93 @@ class Centralized:
         plt.show()
 
 
-    def train(self, n_steps: int):
+    def optimize(self, 
+                 project: str = None, tags: str = None, notes: str = None,
+                 count: int = 5, n_steps: int = 5, 
+                 config = None):
+
+      self.project = project
+      self.tags    = tags
+      self.notes   = notes
+      self.n_steps = n_steps
+      self.config  = config
+
+      wandb.login()
+      sweep_id = wandb.sweep(self.config, project = self.project)
+      
+      return sweep_id
+
+    def train(self, config = None):
         '''
         This method locally trains the model with the dataset of the client. It handles the training at epochs level
         (by calling the run_epoch method for each local epoch of training)
         :return: length of the local dataset, copy of the model parameters
         '''
         
-        self.model.train()
-        
-        # Freeze parameters so we don't backprop through them.
-        for param in self.model.backbone.parameters():
-            param.requires_grad = False
-        print('Params freezed')
+        with(wandb.init(config = config,
+                        project = self.project, tags = self.tags, notes = self.notes)):
+            
+            self.model.train()
+            config = wandb.config
+            
+            # Freeze parameters so we don't backprop through them.
+            for param in self.model.backbone.parameters():
+                param.requires_grad = False
+            print('Params freezed')
 
-        # We build the effective optimizer and scheduler. We need first to create fake dictionaries to pass as argument.
-        dummy_dict = {'params': self.model.classifier.parameters()}
-        opt_param = self.params['optimizer']['settings']
-        dummy_dict.update(opt_param)
-        self.optimizer = self.opt_method([dummy_dict])
+            # We extract the names, we'll need them later to extract the methods as well.
+            self.opt, self.sch = config.optimizer['name'], config.scheduler['name']
+            self.opt_method, self.sch_method = getattr(optim, self.opt), getattr(lr_scheduler, self.sch)
+            
+            # We filter only the arguments we are interested in
+            opt_signature = set(signature(getattr(optim, self.opt)).parameters.keys())
+            filtered_opt = opt_signature.intersection(set(config.optimizer['settings']))
+            dic_opt = config.optimizer['settings']
+            opt_we_want = {key: dic_opt[key] for key in filtered_opt}
 
-        dummy_dict = {'optimizer': self.optimizer}
-        sch_param = self.params['scheduler']['settings']
-        dummy_dict.update(sch_param)
-        self.scheduler = self.sch_method(**dummy_dict)
+            sch_signature = set(signature(getattr(lr_scheduler, self.sch)).parameters.keys())
+            filtered_sch = sch_signature.intersection(set(config.scheduler['settings']))
+            dic_sch = config.scheduler['settings']
+            sch_we_want = {key: dic_sch[key] for key in filtered_sch}
 
 
-        # Training loop. We initialize some empty lists because we need to store the information about the statistics computed
-        # on the mini-batches.
-        self.n_total_steps = len(self.train_loader)
-        self.mean_loss = []
-        self.mean_std  = []
-        self.n_10th_steps = []
-        self.n_epoch_steps = [self.n_total_steps]
-        self.count = 0
+            # We build the effective optimizer and scheduler. We need first to create fake dictionaries to pass as argument.
+            dummy_dict = {'params': self.model.classifier.parameters()}
+            # opt_param = self.config.optimizer['settings']
+            # dummy_dict.update(opt_param)
+            dummy_dict.update(opt_we_want)
+            self.optimizer = self.opt_method([dummy_dict])
 
-        # We initialize a run. We define the name of the project
-        # and the configuration, as well as some notes and tags.
-        run = wandb.init(     
-                                 
-          # Set the project where this run will be logged
-          project = "testing",                                # We create a project with a given name.
-          
-          # Track hyperparameters and run metadata
-          config = self.params,
 
-          notes = "My first experiment",                      # We can add notes...
-          tags = ["baseline", "paper1"]                       # ...and tags as well.
-          )
+            dummy_dict = {'optimizer': self.optimizer}
+            # sch_param = self.config.scheduler['settings']
+            # dummy_dict.update(sch_param)
+            dummy_dict.update(sch_we_want)
+            self.scheduler = self.sch_method(**dummy_dict)
 
-        # We iterate over the epochs.
-        for epoch in range(self.args.num_epochs):
 
-            self.run_epoch(epoch, n_steps)
-            self.scheduler.step()
-                
-            # Here we are simply computing how many steps do we need to complete an epoch.
-            self.n_epoch_steps.append(self.n_epoch_steps[0] * (epoch + 1))
-                
-        
-        print('Training finished!')
-        torch.save(self.model.classifier.state_dict(), 'modelliSalvati/checkpoint.pth')
-        print('Model saved!')
+            # Training loop. We initialize some empty lists because we need to store the information about the statistics computed
+            # on the mini-batches.
+            self.n_total_steps = len(self.train_loader)
+            self.mean_loss = []
+            self.mean_std  = []
+            self.n_10th_steps = []
+            self.n_epoch_steps = [self.n_total_steps]
+            self.count = 0
+
+            # We iterate over the epochs.
+            for epoch in range(self.args.num_epochs):
+
+                self.run_epoch(epoch, self.n_steps)
+                self.scheduler.step()
+                    
+                # Here we are simply computing how many steps do we need to complete an epoch.
+                self.n_epoch_steps.append(self.n_epoch_steps[0] * (epoch + 1))
+                    
+            
+            print('Training finished!')
+            torch.save(self.model.classifier.state_dict(), 'modelliSalvati/checkpoint.pth')
+            print('Model saved!')
 
 
     def test(self, metric):
