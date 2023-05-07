@@ -23,7 +23,7 @@ class Server:
         num_clients = min(self.args.clients_per_round, len(self.train_clients))
         return np.random.choice(self.train_clients, num_clients, replace=False)
 
-    def train_round(self, clients):
+    def train_round(self, clients, config):
         """
             This method trains the model with the dataset of the clients. It handles the training at single round level
             :param clients: list of all the clients to train
@@ -35,7 +35,7 @@ class Server:
         updates = []
         for i, client in enumerate(clients):
             self.load_server_model_on_client(client)
-            client.train()
+            client.train(config)
             client_update = copy.deepcopy(client.model.state_dict())
             updates.append(client_update)
         return updates #una lista di model.state_dict() dei diversi clients
@@ -52,7 +52,7 @@ class Server:
         elif self.args.dataset == 'idda':
             raise NotImplementedError
 
-    def train(self):
+    def train(self, config):
         """
         This method orchestrates the training the evals and tests at rounds level
         """
@@ -63,7 +63,7 @@ class Server:
         """
         for round in range(self.args.num_rounds):
             print(f'round {round+1}')
-            updates = self.train_round(self.train_clients)
+            updates = self.train_round(self.train_clients, config)
             new_state_dict = self.aggregate(updates)
             self.model_params_dict = new_state_dict
 

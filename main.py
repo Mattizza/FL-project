@@ -306,13 +306,16 @@ def sweeping(args):
         }
     }
     
+    
     sweep_id = wandb.sweep(sweep_config, project="pytorch-augmentation1-sweeps")
     #wandb.agent(sweep_id, sweep_train(args=args, model=model), count = 2)
     train_func = lambda: sweep_train(args=args)
+    
     wandb.agent(sweep_id, train_func, count = 1)
 
 
 def sweep_train(args, config = None):
+    
     with wandb.init(config = config):
         config = wandb.config
         print(f'Initializing model...')
@@ -324,17 +327,7 @@ def sweep_train(args, config = None):
         train_clients, test_clients = gen_clients(args, train_datasets, test_datasets, model)
         metrics = set_metrics(args)
         server = Server(args, train_clients, test_clients, model, metrics)
-        opt_params = {'optimizer': {
-                            'name'    : 'Adam',
-                            'settings': {'lr'   : 0.01}
-                            },
-              'scheduler': {
-                            'name'    : 'ConstantLR',
-                            'settings': {'factor': 0.33}
-                            }
-              }
-        train_clients[0].set_opt(opt_params)
-        server.train()    
+        server.train(config.parameters)    
 
 
 def main():
