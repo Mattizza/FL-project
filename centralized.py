@@ -10,6 +10,9 @@ from torch import optim, nn
 from torch.utils.data import DataLoader
 from torch.optim import lr_scheduler
 
+from utils.data_utils import idda_16_cmap, Label2Color
+from utils.utils import HardNegativeMining, MeanReduction, unNormalize
+
 from matplotlib.patches import Rectangle
 from collections import defaultdict
 from utils.utils import HardNegativeMining, MeanReduction, unNormalize
@@ -68,14 +71,14 @@ class Centralized:
             # 
             # Example: len(self.dataset) = 600, self.args.bs = 16, self.n_total_steps = 37
             self.n_total_steps = len(self.train_loader)
-            
-            images = images.to(self.device) 
-            labels = labels.to(self.device)
+
+            images = images.to(self.device, dtype = torch.float32) 
+            labels = labels.to(self.device, dtype = torch.long)
             outputs = self._get_outputs(images)
             
-            loss = self.criterion(outputs, labels.long())
+            loss = self.reduction(self.criterion(outputs,labels), labels)
             self.optimizer.zero_grad()
-            loss.mean().backward()
+            loss.backward()
             self.optimizer.step()
             
             # We keep track of the loss. Notice we are storing the loss for
@@ -182,6 +185,7 @@ class Centralized:
         -) config: we set None as default, but it will be passed by the agent at each iteration.
         '''
         
+
         # We pass the choosen configuration.
         with(wandb.init(config = config,
                         project = self.project, tags = self.tags, notes = self.notes)):
@@ -250,6 +254,7 @@ class Centralized:
             print('Model saved!')
 
 
+    #i dati vengono testati sugli stessi dati di training
     def test(self, metric):
         """
         This method tests the model on the local dataset of the client.
@@ -262,15 +267,19 @@ class Centralized:
                 labels = labels.to(self.device)
                 outputs = self._get_outputs(images)
                 self.updatemetric(metric, outputs, labels)
+   
     
+    def checkImageAndPrediction(self, ix, alpha = 0.4):
+        """
+        This method plot the image and the predicted mask.
+        :param int ix: index of the image in self.dataset
+        :param float alpha: transparency index
+        """
+        img = self.dataset[ix][0].cuda()
+        outputLogit = self.model(img.view(1, 3, 512, 928))['out'][0]
+        prediction = outputLogit.argmax(0)
+        label2color = Label2Color(idda_16_cmap())
+        pred_mask = label2color(prediction.cpu()).astype(np.uint8)
+        plt.imshow(unNormalize(img.cpu()).permute(1,2,0))
+        plt.imshow(pred_mask, alpha = alpha)
 
-    def checkRndImageAndLabel(self, alpha = 0.4):
-        # TODO: abbellire la funzione stampando bordi ed etichette
-        self.model.eval()
-        with torch.no_grad():
-            rnd = torch.randint(low = 0, high = 600, size = (1,)).item()
-            image = self.dataset[rnd][0]
-            outputLogit = self.model(image.view(1, 3, 512, 928))['out'][0]
-            prediction = outputLogit.argmax(0)
-            plt.imshow(unNormalize(image[0].cpu()).permute(1,2,0))
-            plt.imshow(prediction.cpu().numpy(), alpha = alpha)
