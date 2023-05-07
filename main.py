@@ -1,27 +1,28 @@
+
 import os
 import json
-from collections import defaultdict
-
 import torch
 import random
-
+import wandb
 import numpy as np
-from torchvision.models import resnet18
 
 import datasets.ss_transforms as sstr
 import datasets.np_transforms as nptr
 
 from torch import nn
-from client import Client
-from datasets.femnist import Femnist
-from server import Server
-from utils.args import get_parser
-from datasets.idda import IDDADataset
-from models.deeplabv3 import deeplabv3_mobilenetv2
-from utils.stream_metrics import StreamSegMetrics, StreamClsMetrics
-from centralized import Centralized
+from torchvision.models import resnet18
 
-import wandb
+from client import Client
+from server import Server
+from centralized import Centralized
+from datasets.idda import IDDADataset
+from datasets.femnist import Femnist
+
+from collections import defaultdict
+from utils.args import get_parser
+from utils.stream_metrics import StreamSegMetrics, StreamClsMetrics
+from models.deeplabv3 import deeplabv3_mobilenetv2
+
 
 def set_seed(random_seed):
     random.seed(random_seed)
@@ -191,12 +192,13 @@ def get_sweep_transforms(args, config):
     if args.model == 'deeplabv3_mobilenetv2':
         rnd_transforms = []
 
-        if config.RndRot:
-            rnd_transforms.append(sstr.RandomRotation(10))
-        if config.RndHzFlip:
-            rnd_transforms.append(sstr.RandomHorizontalFlip(10))
-        if config.RndVertFlip:
-            rnd_transforms.append(sstr.RandomVerticalFlip(10))
+        # Select only the transforms of interest. We take the string and we build the method.
+        # WARNING: omitted '(10)' as argument like in the previous version.
+        # WARNING: not tested due to problems with WandB API.
+        keep = [value for key, value in config.transforms.items() if value is not np.nan] 
+        
+        for i in range(len(keep)):
+            rnd_transforms.append(getattr(sstr, keep[i])) 
 
         base_transforms = [
             sstr.RandomResizedCrop((512, 928), scale=(0.5, 2.0)),
@@ -216,28 +218,101 @@ def sweeping(args):
     wandb.login()
     #!passare a file yaml
     sweep_config = {
-        'method': 'grid',
-        'metric' : {'name': 'loss', 'goal': 'minimize'}
-    }
-    parameters_dict =  {'RndRot':{'values':[True, False]},
-                        'RndHzFlip':{'values':[True, False]},
-                        'RndVertFlip':{'values':[True, False]}}
     
-                        #,'RndScale':{'values':[True, False]},
-                        #'RndCrop':{'values':[True, False]},
-                        #'RndResizedCrop':{'values':[True, False]},
-                        #'ClrJitter':{'values':[True, False]},
-                        #'RndScaleRndCrop':{'values':[True, False]}
+    'method': 'random',    # We specify the search strategy.
     
-    sweep_config['parameters'] = parameters_dict
+    'metric': {            # We set the metric and the goal (minimize/maximize).
+        'name': 'loss',
+        'goal': 'minimize'
+        },
 
+    # Here we need to set all the parameters we want to tune. Notice that the key
+    # 'parameters' is mandatory and can't be omitted.
+    'parameters': {
+        
+        # \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+        # Hyperparameters that need additional hyperparameters, e.g. optimizer and scheduler.
+        # In this case we need to specify both the name and the settings related to each.        
+        'optimizer': {
+            'parameters': {
+                           'name': {'values': ['Adam', 'SGD']},
+                           'settings': {'parameters': {                           
+                                                       'lr'      : {'max': 0.1,   
+                                                                    'min': 0.01},
+                                                       'momentum': {'max': 1,
+                                                                    'min': 0}
+                                                       }
+                                        }
+                           }
+                      },
+
+        'scheduler': {
+            'parameters': {
+                           'name'  : {'values': ['ConstantLR', 'ExponentialLR']},
+                           'settings': {'parameters':{      
+                                                      'gamma' : {'max': 1,
+                                                                 'min': 0.1},
+                                                      'factor': {'max': 1,
+                                                                 'min': 0.1}}
+                                        }
+                            }
+                      },
+
+        # \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+        # Hyperparameters that are related to the whole process, e.g. #layers or dropout.
+        # These can be seen as global, and don't need specific hyperparameters related to
+        # them.
+
+        # We have 8 transforms. We want to create different combinations of them. In
+        # order to do this we create a dictionary of parameters and for each key (i.e. 
+        # each possible transform) we choose whether to use it or not. Notice we have set
+        # a probability distribution over them since we don't want to have lists full of
+        # them every time.
+        'transforms': {
+            'parameters': {
+                           'tr1': {'values': ['RndRot', np.nan],
+                                   'distribution': 'categorical',
+                                   'probs': [0.3, 0.7]},
+                           
+                           'tr2': {'values': ['RndHzFlip', np.nan],
+                                   'distribution': 'categorical',
+                                   'probs': [0.3, 0.7]},
+                           
+                           'tr3': {'values': ['RndVertFlip', np.nan],
+                                   'distribution': 'categorical',
+                                   'probs': [0.3, 0.7]},
+                           
+                           'tr4': {'values': ['RndScale', np.nan],
+                                   'distribution': 'categorical',
+                                   'probs': [0.3, 0.7]},
+                           
+                           'tr5': {'values': ['RndCrop', np.nan],
+                                   'distribution': 'categorical',
+                                   'probs': [0.3, 0.7]},
+                           
+                           'tr6': {'values': ['RndResizedCrop', np.nan],
+                                   'distribution': 'categorical',
+                                   'probs': [0.3, 0.7]},
+                           
+                           'tr7': {'values': ['ClrJitter', np.nan],
+                                   'distribution': 'categorical',
+                                   'probs': [0.3, 0.7]},
+                           
+                           'tr8': {'values': ['RndScaleRndCrop', np.nan],
+                                   'distribution': 'categorical',
+                                   'probs': [0.3, 0.7]},
+            }
+         }
+        }
+    }
+    
     sweep_id = wandb.sweep(sweep_config, project="pytorch-augmentation1-sweeps")
     #wandb.agent(sweep_id, sweep_train(args=args, model=model), count = 2)
     train_func = lambda: sweep_train(args=args)
     wandb.agent(sweep_id, train_func, count = 1)
 
 
-def sweep_train(args, config=None):
+def sweep_train(args, config = None):
     with wandb.init(config = config):
         config = wandb.config
         print(f'Initializing model...')
