@@ -58,7 +58,7 @@ class Centralized:
             -) cur_epoch: current epoch of training;
             -) optimizer: optimizer used for the local training.
         '''
-
+        cumu_loss = 0
         print('epoch', cur_epoch + 1)
         for cur_step, (images, labels) in enumerate(self.train_loader):
                 
@@ -74,10 +74,13 @@ class Centralized:
             outputs = self._get_outputs(images)
             
             loss = self.reduction(self.criterion(outputs,labels), labels)
+            cumu_loss += loss.item()
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
             
+            wandb.log({"batch loss": loss.item()})
+
             # We keep track of the loss. Notice we are storing the loss for
             # each mini-batch.
             #wandb.log({"loss": loss.mean()})
@@ -101,6 +104,8 @@ class Centralized:
                 # be of use when plotting the learning curve.
                 self.n_10th_steps.append(self.count)
                 print(f'epoch {cur_epoch + 1} / {self.args.num_epochs}, step {cur_step + 1} / {self.n_total_steps}, loss = {loss.mean():.3f}')
+        
+        return cumu_loss /len(self.train_loader)
 
 
     def set_opt(self, params: dict) -> None:
@@ -167,9 +172,9 @@ class Centralized:
         (by calling the run_epoch method for each local epoch of training)
         :return: length of the local dataset, copy of the model parameters
         '''
-        
+
         self.model.train()
-        
+
         # Freeze parameters so we don't backprop through them.
         #!for param in self.model.backbone.parameters():
         #!    param.requires_grad = False
@@ -201,10 +206,10 @@ class Centralized:
         # We initialize a run. We define the name of the project
         # and the configuration, as well as some notes and tags.
         #run = wandb.init(     
-                                 
+                                
         #   # Set the project where this run will be logged
         #   project = "testing",                                # We create a project with a given name.
-          
+        
         #   # Track hyperparameters and run metadata
         #   config = self.params,
 
@@ -215,16 +220,16 @@ class Centralized:
         # We iterate over the epochs.
         for epoch in range(self.args.num_epochs):
 
-            self.run_epoch(epoch, n_steps)
+            avg_loss = self.run_epoch(epoch, n_steps)
             self.scheduler.step()
-                
+            wandb.log({"loss": avg_loss, "epoch": epoch})
             # Here we are simply computing how many steps do we need to complete an epoch.
             self.n_epoch_steps.append(self.n_epoch_steps[0] * (epoch + 1))
-                
-        
-        print('Training finished!')
-        #!torch.save(self.model.classifier.state_dict(), 'modelliSalvati/checkpoint.pth')
-        #!print('Model saved!')
+                    
+            
+            print('Training finished!')
+            #!torch.save(self.model.classifier.state_dict(), 'modelliSalvati/checkpoint.pth')
+            #!print('Model saved!')
 
 
 

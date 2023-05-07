@@ -3,6 +3,7 @@ from collections import OrderedDict
 from centralized import Centralized
 import numpy as np
 import torch
+import wandb
 
 
 class Server:
@@ -89,6 +90,7 @@ class Server:
             client.test(metric)
 
         miou = metric.get_results()['Mean IoU']
+        wandb.log({'train_miou':miou})
         print(f'Mean IoU: {miou:.2%}')
         self.mious['eval_train'].append(miou)
      
@@ -108,6 +110,7 @@ class Server:
             metric.reset()
             client.test(metric)
             miou = metric.get_results()['Mean IoU']
+            wandb.log({client.name : miou})
             print(f'Mean IoU: {miou:.2%}')
             self.mious[client.name].append(miou)
 

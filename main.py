@@ -21,6 +21,7 @@ from models.deeplabv3 import deeplabv3_mobilenetv2
 from utils.stream_metrics import StreamSegMetrics, StreamClsMetrics
 from centralized import Centralized
 
+import wandb
 
 def set_seed(random_seed):
     random.seed(random_seed)
@@ -96,10 +97,12 @@ def read_femnist_data(train_data_dir, test_data_dir):
     return read_femnist_dir(train_data_dir), read_femnist_dir(test_data_dir)
 
 
-def get_datasets(args):
+def get_datasets(args, train_transforms = None, test_transforms = None):
 
     train_datasets = []
-    train_transforms, test_transforms = get_transforms(args)
+
+    if train_transforms == None or test_transforms == None:
+        train_transforms, test_transforms = get_transforms(args)
 
     if args.dataset == 'idda' or args.dataset == 'iddaCB':
         root = 'data/idda'
@@ -183,6 +186,80 @@ def gen_clients(args, train_datasets, test_datasets, model):
 
     return clients[0], clients[1]
 
+def get_sweep_transforms(args, config):
+    # TODO: test your data augmentation by changing the transforms here!
+    if args.model == 'deeplabv3_mobilenetv2':
+        rnd_transforms = []
+
+        if config.RndRot:
+            rnd_transforms.append(sstr.RandomRotation(10))
+        if config.RndHzFlip:
+            rnd_transforms.append(sstr.RandomHorizontalFlip(10))
+        if config.RndVertFlip:
+            rnd_transforms.append(sstr.RandomVerticalFlip(10))
+
+        base_transforms = [
+            sstr.RandomResizedCrop((512, 928), scale=(0.5, 2.0)),
+            sstr.ToTensor(),
+            sstr.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+            ]
+        
+        train_transforms = sstr.Compose(rnd_transforms + base_transforms)
+        test_transforms = sstr.Compose(base_transforms)
+
+    else:
+        raise NotImplementedError
+    
+    return train_transforms, test_transforms
+
+def sweeping(args):
+    wandb.login()
+    #!passare a file yaml
+    sweep_config = {
+        'method': 'grid',
+        'metric' : {'name': 'loss', 'goal': 'minimize'}
+    }
+    parameters_dict =  {'RndRot':{'values':[True, False]},
+                        'RndHzFlip':{'values':[True, False]},
+                        'RndVertFlip':{'values':[True, False]}}
+    
+                        #,'RndScale':{'values':[True, False]},
+                        #'RndCrop':{'values':[True, False]},
+                        #'RndResizedCrop':{'values':[True, False]},
+                        #'ClrJitter':{'values':[True, False]},
+                        #'RndScaleRndCrop':{'values':[True, False]}
+    
+    sweep_config['parameters'] = parameters_dict
+
+    sweep_id = wandb.sweep(sweep_config, project="pytorch-augmentation1-sweeps")
+    #wandb.agent(sweep_id, sweep_train(args=args, model=model), count = 2)
+    train_func = lambda: sweep_train(args=args)
+    wandb.agent(sweep_id, train_func, count = 1)
+
+
+def sweep_train(args, config=None):
+    with wandb.init(config = config):
+        config = wandb.config
+        print(f'Initializing model...')
+        model = model_init(args)
+        model.cuda()
+        print('Done.')
+        train_transforms, test_transforms = get_sweep_transforms(args, config)
+        train_datasets, test_datasets = get_datasets(args=args, train_transforms = train_transforms , test_transforms = test_transforms)
+        train_clients, test_clients = gen_clients(args, train_datasets, test_datasets, model)
+        metrics = set_metrics(args)
+        server = Server(args, train_clients, test_clients, model, metrics)
+        opt_params = {'optimizer': {
+                            'name'    : 'Adam',
+                            'settings': {'lr'   : 0.01}
+                            },
+              'scheduler': {
+                            'name'    : 'ConstantLR',
+                            'settings': {'factor': 0.33}
+                            }
+              }
+        train_clients[0].set_opt(opt_params)
+        server.train()    
 
 
 def main():
@@ -190,19 +267,27 @@ def main():
     args = parser.parse_args()
     set_seed(args.seed)
 
-    print(f'Initializing model...')
-    model = model_init(args)
-    model.cuda()
-    print('Done.')
+    #print(f'Initializing model...')
+    #model = model_init(args)
+    #model.cuda()
+    #print('Done.')
 
-    print('Generate datasets...')
-    train_datasets, test_datasets = get_datasets(args)
-    print('Done.')
+    if args.do_sweep == True:
+        sweeping(args)
 
-    metrics = set_metrics(args)
-    train_clients, test_clients = gen_clients(args, train_datasets, test_datasets, model)
-    server = Server(args, train_clients, test_clients, model, metrics)
-    server.train()
+    else:
+        print(f'Initializing model...')
+        model = model_init(args)
+        model.cuda()
+        print('Done.')
+        print('Generate datasets...')
+        train_datasets, test_datasets = get_datasets(args)
+        print('Done.')
+
+        metrics = set_metrics(args)
+        train_clients, test_clients = gen_clients(args, train_datasets, test_datasets, model)
+        server = Server(args, train_clients, test_clients, model, metrics)
+        server.train()
 
 
 if __name__ == '__main__':
