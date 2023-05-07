@@ -231,6 +231,7 @@ class Centralized:
 
             # Training loop. We initialize some empty lists because we need to store the information about the statistics computed
             # on the mini-batches.
+            # WARNING: to be decided if it is worth it keep this. Do we need learning curves?
             self.n_total_steps = len(self.train_loader)
             self.mean_loss = []
             self.mean_std  = []
