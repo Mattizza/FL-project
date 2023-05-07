@@ -1,17 +1,18 @@
+
 import copy
 import torch
+import os
+import wandb
+import numpy as np
+import matplotlib.pyplot as plt
 
 from torch import optim, nn
-from collections import defaultdict
 from torch.utils.data import DataLoader
-
-from utils.utils import HardNegativeMining, MeanReduction, unNormalize
-import os
-import matplotlib.pyplot as plt
 from torch.optim import lr_scheduler
-import numpy as np
+
 from matplotlib.patches import Rectangle
-import wandb
+from collections import defaultdict
+from utils.utils import HardNegativeMining, MeanReduction, unNormalize
 from inspect import signature
 
 
@@ -101,22 +102,8 @@ class Centralized:
                 self.n_10th_steps.append(self.count)
                 print(f'epoch {cur_epoch + 1} / {self.args.num_epochs}, step {cur_step + 1} / {self.n_total_steps}, loss = {loss.mean():.3f} ± {(loss.std() / np.sqrt(self.args.bs)):.3f}')
 
-
-    def set_opt(self, params: dict) -> None:
-        '''
-        This helper function supports us when passing the optimization hyperparameters.
-          -) the optimization algorithm and its parameters;
-          -) the rate decay and its parameters.
-        '''
-        
-        # Get parameters and retrieve the methods desidered by the user.
-        self.params = params
-
-        # We extract the names, we'll need them later to extract the methods as well.
-        self.opt, self.sch = params['optimizer']['name'], params['scheduler']['name']
-        self.opt_method, self.sch_method = getattr(optim, self.opt), getattr(lr_scheduler, self.sch)
-
-
+    
+    # WARNING: MAY BE REMOVED OR MAY BE REDEFINED.
     def print_learning(self, step: int, plot_error = False) -> None:
         '''
         Function used to print the learning curves.
@@ -162,8 +149,17 @@ class Centralized:
 
     def optimize(self, 
                  project: str = None, tags: str = None, notes: str = None,
-                 count: int = 5, n_steps: int = 5, 
-                 config = None):
+                 n_steps: int = 5, 
+                 config = None) -> str:
+      '''
+      We call this function to define a sweep_id that will be passed to the agents. It is an helper function
+      that acts like a gate between the configuration and the search procedure.
+      -) project: the name of the project we are referring to. It must be unique between runs;
+      -) tags: the tags assigned;
+      -) notes: optional notes;
+      -) n_steps: how many steps we want to wait before plotting the loss;
+      -) config: a dictionary containing the configuration of our search.
+      '''
 
       self.project = project
       self.tags    = tags
@@ -171,18 +167,22 @@ class Centralized:
       self.n_steps = n_steps
       self.config  = config
 
+      # We login with our credentials and we return an id.
       wandb.login()
       sweep_id = wandb.sweep(self.config, project = self.project)
       
       return sweep_id
+
 
     def train(self, config = None):
         '''
         This method locally trains the model with the dataset of the client. It handles the training at epochs level
         (by calling the run_epoch method for each local epoch of training)
         :return: length of the local dataset, copy of the model parameters
+        -) config: we set None as default, but it will be passed by the agent at each iteration.
         '''
         
+        # We pass the choosen configuration.
         with(wandb.init(config = config,
                         project = self.project, tags = self.tags, notes = self.notes)):
             
@@ -194,16 +194,23 @@ class Centralized:
                 param.requires_grad = False
             print('Params freezed')
 
-            # We extract the names, we'll need them later to extract the methods as well.
+            # We extract the names, we'll need them later to extract the methods as well. Notice that now
+            # we are acting on the 'config' object and its attributes.
             self.opt, self.sch = config.optimizer['name'], config.scheduler['name']
             self.opt_method, self.sch_method = getattr(optim, self.opt), getattr(lr_scheduler, self.sch)
             
-            # We filter only the arguments we are interested in
-            opt_signature = set(signature(getattr(optim, self.opt)).parameters.keys())
-            filtered_opt = opt_signature.intersection(set(config.optimizer['settings']))
+            # We filter only the arguments we are interested in. We do this by extracting the signature of
+            # the choosen functions and by filtering only the instanciated values thar correspond to it.
+           
+            # Optimizer signature
+            opt_signature = set(signature(getattr(optim, self.opt)).parameters.keys())      
+            
+            # Parameters that belong to the signature only. We build a dictionary that will be of use later.
+            filtered_opt = opt_signature.intersection(set(config.optimizer['settings']))                                  
             dic_opt = config.optimizer['settings']
             opt_we_want = {key: dic_opt[key] for key in filtered_opt}
 
+            # We do the same we just did for the optimizer.
             sch_signature = set(signature(getattr(lr_scheduler, self.sch)).parameters.keys())
             filtered_sch = sch_signature.intersection(set(config.scheduler['settings']))
             dic_sch = config.scheduler['settings']
@@ -212,15 +219,9 @@ class Centralized:
 
             # We build the effective optimizer and scheduler. We need first to create fake dictionaries to pass as argument.
             dummy_dict = {'params': self.model.classifier.parameters()}
-            # opt_param = self.config.optimizer['settings']
-            # dummy_dict.update(opt_param)
             dummy_dict.update(opt_we_want)
             self.optimizer = self.opt_method([dummy_dict])
-
-
-            dummy_dict = {'optimizer': self.optimizer}
-            # sch_param = self.config.scheduler['settings']
-            # dummy_dict.update(sch_param)
+            dummy_dict = {'optimizer': self.optimizer}      # WARNING: WHY 'optimizer' IF WE ARE REFERRING TO THE SCHEDULER? CHECK
             dummy_dict.update(sch_we_want)
             self.scheduler = self.sch_method(**dummy_dict)
 
@@ -262,6 +263,7 @@ class Centralized:
                 outputs = self._get_outputs(images)
                 self.updatemetric(metric, outputs, labels)
     
+
     def checkRndImageAndLabel(self, alpha = 0.4):
         # TODO: abbellire la funzione stampando bordi ed etichette
         self.model.eval()
