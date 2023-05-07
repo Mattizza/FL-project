@@ -193,7 +193,7 @@ class Centralized:
             for param in self.model.backbone.parameters():
                 param.requires_grad = False
             print('Params freezed')
-
+            
             # We extract the names, we'll need them later to extract the methods as well. Notice that now
             # we are acting on the 'config' object and its attributes.
             self.opt, self.sch = config.optimizer['name'], config.scheduler['name']
