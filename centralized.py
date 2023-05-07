@@ -15,7 +15,6 @@ from utils.utils import HardNegativeMining, MeanReduction, unNormalize
 
 from matplotlib.patches import Rectangle
 from collections import defaultdict
-from utils.utils import HardNegativeMining, MeanReduction, unNormalize
 from inspect import signature
 
 
