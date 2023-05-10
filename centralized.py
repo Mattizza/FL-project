@@ -78,8 +78,8 @@ class Centralized:
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
-            
-            wandb.log({"batch loss": loss.item()})
+            if self.args.wandb == True:
+                wandb.log({"batch loss": loss.item()})
 
             # We keep track of the loss. Notice we are storing the loss for
             # each mini-batch.
@@ -165,6 +165,8 @@ class Centralized:
 
         plt.show()
 
+    def generate_update(self):
+        return copy.deepcopy(self.model.state_dict())
 
     def train(self, n_steps=10):
         '''
@@ -216,13 +218,15 @@ class Centralized:
         #   notes = "My first experiment",                      # We can add notes...
         #   tags = ["baseline", "paper1"]                       # ...and tags as well.
         #   )
+        num_train_samples = len(self.dataset)
 
         # We iterate over the epochs.
         for epoch in range(self.args.num_epochs):
 
             avg_loss = self.run_epoch(epoch, n_steps)
             self.scheduler.step()
-            wandb.log({"loss": avg_loss, "epoch": epoch})
+            if self.args.wandb == True:
+                wandb.log({"loss": avg_loss, "epoch": epoch})
             # Here we are simply computing how many steps do we need to complete an epoch.
             self.n_epoch_steps.append(self.n_epoch_steps[0] * (epoch + 1))
                     
@@ -230,6 +234,10 @@ class Centralized:
             print('Training finished!')
             #!torch.save(self.model.classifier.state_dict(), 'modelliSalvati/checkpoint.pth')
             #!print('Model saved!')
+
+        update = self.generate_update()
+        
+        return num_train_samples, update
 
 
 

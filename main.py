@@ -176,7 +176,7 @@ def gen_clients(args, train_datasets, test_datasets, model):
         clients = [[], []]
         for i, datasets in enumerate([train_datasets, test_datasets]):
             for ds in datasets:
-                clients[i].append(Client(args, ds, model, test_client=i == 1))
+                clients[i].append(Centralized(args, ds, model, test_client=i == 1)) #Chiamare centralized Client
 
     elif args.dataset == 'iddaCB':
         clients = [[], []]
@@ -222,7 +222,6 @@ def sweeping(args):
     parameters_dict =  {'RndRot':{'values':[True, False]},
                         'RndHzFlip':{'values':[True, False]},
                         'RndVertFlip':{'values':[True, False]}}
-    
                         #,'RndScale':{'values':[True, False]},
                         #'RndCrop':{'values':[True, False]},
                         #'RndResizedCrop':{'values':[True, False]},
@@ -232,7 +231,6 @@ def sweeping(args):
     sweep_config['parameters'] = parameters_dict
 
     sweep_id = wandb.sweep(sweep_config, project="pytorch-augmentation1-sweeps")
-    #wandb.agent(sweep_id, sweep_train(args=args, model=model), count = 2)
     train_func = lambda: sweep_train(args=args)
     wandb.agent(sweep_id, train_func, count = 1)
 
@@ -258,6 +256,7 @@ def sweep_train(args, config=None):
                             'settings': {'factor': 0.33}
                             }
               }
+        
         train_clients[0].set_opt(opt_params)
         server.train()    
 
@@ -272,10 +271,13 @@ def main():
     #model.cuda()
     #print('Done.')
 
-    if args.do_sweep == True:
+    if args.wandb == 'hypTuning' or args.wandb == 'transformTuning':
         sweeping(args)
+    
+    elif args.wandb == 'singleRun':
+        raise NotImplementedError
 
-    else:
+    elif args.wandb == 'None':
         print(f'Initializing model...')
         model = model_init(args)
         model.cuda()

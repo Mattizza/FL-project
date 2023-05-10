@@ -12,18 +12,20 @@ class Server:
         self.args = args
         self.train_clients = train_clients #lista con un solo elemento (istanza della classe centralized (test_client = False))
         self.test_clients = test_clients #lista con due elementi (istanza della classe centralized (test_client = True))
+        #self.selected_clients = [] #client che vengono selezionati ad ogni round
         self.model = model #da passare poi al client
         self.metrics = metrics
         self.model_params_dict = copy.deepcopy(self.model.state_dict())
         #per setting centralized
         self.params = None
         self.mious = {'eval_train':[], "test_same_dom":[], "test_diff_dom":[]}
+        
 
     def select_clients(self):
         num_clients = min(self.args.clients_per_round, len(self.train_clients))
         return np.random.choice(self.train_clients, num_clients, replace=False)
 
-    def train_round(self, clients):
+    def train_round(self):
         """
             This method trains the model with the dataset of the clients. It handles the training at single round level
             :param clients: list of all the clients to train
@@ -33,24 +35,48 @@ class Server:
         Fa il train sul trainClient (train.txt)
         """
         updates = []
-        for i, client in enumerate(clients):
+        for i, client in enumerate(self.select_clients()):
+            print(client.name)
             self.load_server_model_on_client(client)
-            client.train()
-            client_update = copy.deepcopy(client.model.state_dict())
-            updates.append(client_update)
-        return updates #una lista di model.state_dict() dei diversi clients
+            num_samples, update = client.train()
 
-    def aggregate(self, updates):
+            #client_update = copy.deepcopy(client.model.state_dict())
+            updates.append((num_samples, update))
+
+        return updates #una lista di model.state_dict() dei diversi clients
+    
+    def _aggregate(self, updates):
         """
         This method handles the FedAvg aggregation
         :param updates: updates received from the clients
         :return: aggregated parameters
         """
         if self.args.dataset == 'iddaCB':
-            return updates[0]
+            return updates[0][1]
         
         elif self.args.dataset == 'idda':
-            raise NotImplementedError
+            m_tot_samples = 0
+            base = OrderedDict()
+
+            for (client_samples, client_model) in updates:
+                m_tot_samples += client_samples #numero totale di data points tra i clienti scelti 
+
+                for key, value in client_model.items():
+                    if key in base:
+                        base[key] += client_samples * value.type(torch.FloatTensor)
+                    else:
+                        base[key] = client_samples * value.type(torch.FloatTensor)
+            averaged_sol_n = copy.deepcopy(self.model_params_dict)
+            for key, value in base.items():
+                if m_tot_samples != 0:
+                    averaged_sol_n[key] = value.to('cuda') / m_tot_samples
+            
+            return averaged_sol_n #è un model_state_dict
+    
+    def update_model(self, updates):
+        #chiama aggregate() che restituisce new_state_dict
+        self.model_params_dict = self._aggregate(updates)
+
 
     def train(self):
         """
@@ -63,9 +89,17 @@ class Server:
         """
         for round in range(self.args.num_rounds):
             print(f'round {round+1}')
-            updates = self.train_round(self.train_clients)
-            new_state_dict = self.aggregate(updates)
-            self.model_params_dict = new_state_dict
+            #funzione per scegliere m train_clients
+
+            updates = self.train_round() #crea un lista [(num_samples, model_state_dict),...,]           
+            
+            new_model_parmas = self._aggregate(updates)
+            self.model.load_state_dict(new_model_parmas)
+            self.model_params_dict = copy.deepcopy(self.model.state_dict())
+
+            #self.update_model(updates) #aggiorna self.model_params_dict
+            #self.model.load_state_dict = self.model_params_dict
+            #self.model_params_dict = new_state_dict
 
             self.eval_train()
             self.test()
@@ -84,13 +118,16 @@ class Server:
 
         metric = self.metrics['eval_train']
         metric.reset()
-        for client in self.train_clients:
-            print(f"Testing client {client.name}...")
+        print(f"Testing train clients")
+        for client in self.train_clients: #tutti i client o solo i selected?
+            #print(f"Testing client {client.name}...")
             self.load_server_model_on_client(client)
             client.test(metric)
 
         miou = metric.get_results()['Mean IoU']
-        wandb.log({'train_miou':miou})
+        if self.args.wandb == True:
+            wandb.log({'train_miou':miou})
+
         print(f'Mean IoU: {miou:.2%}')
         self.mious['eval_train'].append(miou)
      
@@ -110,7 +147,8 @@ class Server:
             metric.reset()
             client.test(metric)
             miou = metric.get_results()['Mean IoU']
-            wandb.log({client.name : miou})
+            if self.args.wandb == True:
+                wandb.log({client.name : miou})
             print(f'Mean IoU: {miou:.2%}')
             self.mious[client.name].append(miou)
 
