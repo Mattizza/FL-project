@@ -275,9 +275,45 @@ def main():
         sweeping(args)
     
     elif args.wandb == 'singleRun':
-        raise NotImplementedError
+        wandb.login()
+        wandb.init(
+            project = 'singleRuns',
+            config = {
+                'opt' = 'Adam'
+                'lr' = 0.01
+                'sch' = 'ConstantLR'
+                'factor' = 0.33
+            })
+        config = wandb.config
 
-    elif args.wandb == 'None':
+        print(f'Initializing model...')
+        model = model_init(args)
+        model.cuda()
+        print('Done.')
+        print('Generate datasets...')
+        train_datasets, test_datasets = get_datasets(args)
+        print('Done.')
+
+        metrics = set_metrics(args)
+        train_clients, test_clients = gen_clients(args, train_datasets, test_datasets, model)
+        server = Server(args, train_clients, test_clients, model, metrics)
+        
+        opt_params = {'optimizer': {
+                            'name'    : config.get('opt'),
+                            'settings': {'lr'   : config.get('lr')}
+                            },
+              'scheduler': {
+                            'name'    : config.get('sch'),
+                            'settings': {'factor': config.get('factor')}
+                            }
+              }
+        
+        for c in train_clients:
+            c.set_opt(opt_params)
+        server.train()
+        
+
+    elif args.wandb == None:
         print(f'Initializing model...')
         model = model_init(args)
         model.cuda()

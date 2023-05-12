@@ -125,7 +125,7 @@ class Server:
             client.test(metric)
 
         miou = metric.get_results()['Mean IoU']
-        if self.args.wandb == True:
+        if self.args.wandb != None:
             wandb.log({'train_miou':miou})
 
         print(f'Mean IoU: {miou:.2%}')
@@ -147,7 +147,7 @@ class Server:
             metric.reset()
             client.test(metric)
             miou = metric.get_results()['Mean IoU']
-            if self.args.wandb == True:
+            if self.args.wandb != None:
                 wandb.log({client.name : miou})
             print(f'Mean IoU: {miou:.2%}')
             self.mious[client.name].append(miou)

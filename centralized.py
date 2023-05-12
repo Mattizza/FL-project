@@ -78,7 +78,7 @@ class Centralized:
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
-            if self.args.wandb == True:
+            if self.args.wandb != None:
                 wandb.log({"batch loss": loss.item()})
 
             # We keep track of the loss. Notice we are storing the loss for
@@ -205,19 +205,7 @@ class Centralized:
         self.n_epoch_steps = [self.n_total_steps]
         self.count = 0
 
-        # We initialize a run. We define the name of the project
-        # and the configuration, as well as some notes and tags.
-        #run = wandb.init(     
-                                
-        #   # Set the project where this run will be logged
-        #   project = "testing",                                # We create a project with a given name.
-        
-        #   # Track hyperparameters and run metadata
-        #   config = self.params,
-
-        #   notes = "My first experiment",                      # We can add notes...
-        #   tags = ["baseline", "paper1"]                       # ...and tags as well.
-        #   )
+       
         num_train_samples = len(self.dataset)
 
         # We iterate over the epochs.
@@ -225,7 +213,7 @@ class Centralized:
 
             avg_loss = self.run_epoch(epoch, n_steps)
             self.scheduler.step()
-            if self.args.wandb == True:
+            if self.args.wandb != None:
                 wandb.log({"loss": avg_loss, "epoch": epoch})
             # Here we are simply computing how many steps do we need to complete an epoch.
             self.n_epoch_steps.append(self.n_epoch_steps[0] * (epoch + 1))
