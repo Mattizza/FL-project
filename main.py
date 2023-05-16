@@ -247,14 +247,27 @@ def sweeping(args):
         'optimizer' : { 'values' : ['Adam','SGD']},
         'learning_rate' : {'distribution': 'uniform',
                             'min': 0,
-                            'max': 0.1}
-                            
+                            'max': 0.1},
+        'weight_decay': {'distribution': 'uniform',
+                            'min': 0,
+                            'max': 1},
+        'momentum' : {'distribution': 'uniform',
+                            'min': 0,
+                            'max': 1},
+        'scheduler' : {'values' : ['ConstantLR', 'ExponentialLR']},
+        'factor' : {'distribution':'uniform',
+                    'min': 0,
+                    'max': 1},
+        'gamma' : {'distribution':'uniform',
+                   'min': 0,
+                   'max': 1}
     }
+
     dict_sweep['parameters'] = parameters
 
-    sweep_id = wandb.sweep(dict_sweep, project="test_hyp_sweeps_16-5")
+    sweep_id = wandb.sweep(dict_sweep, project="new_test_hyp_sweeps_16-5")
     train_func = lambda: sweep_train(args=args)
-    wandb.agent(sweep_id, train_func, count = 1)
+    wandb.agent(sweep_id, train_func, count = 4)
 
 
 def sweep_train(args, config=None):

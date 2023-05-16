@@ -132,6 +132,15 @@ class Centralized:
         self.optimizer = opt_method(self.model.parameters(), **valid_params_dict)
         print(self.optimizer)
     
+    def new_set_opt(self, config):
+        if config.get('optimizer') =='Adam':
+            self.optimizer = optim.Adam(self.model.parameters(), lr = config.get('learning_rate'), weight_decay = config.get('weight_decay'))
+        
+        elif config.get('optimizer') == 'SGD':
+            self.optimizer = optim.SGD(self.model.parameters(), lr = config.get('learning_rate'), momentum = config.get('momentum'),weight_decay = config.get('weight_decay'))
+        
+        print(self.optimizer)
+    
     def set_scheduler(self, config):
         """
             Creates a scheduler with the parameters contained in config. Also discard the useless settings.
@@ -147,6 +156,15 @@ class Centralized:
         
         self.scheduler = sch_method(self.optimizer, **valid_params_dict)
         print('Scheduler:\n',type(self.scheduler),"\n", self.scheduler.state_dict())
+    
+    def new_set_scheduler(self, config):
+        if config.get('scheduler') == 'ConstantLR':
+            self.scheduler = lr_scheduler.ConstantLR(self.optimizer, factor = config.get('factor'))
+        
+        elif config.get('scheduler') == 'ExponentialLR':
+            self.scheduler = lr_scheduler.ExponentialLR(self.optimizer, gamma = config.get('gamma'))
+        
+        print('Scheduler:\n',type(self.scheduler),"\n", self.scheduler.state_dict())
 
 
 
@@ -156,8 +174,8 @@ class Centralized:
         """
         #il file config che riceve deve essere un dizionario con chiavi esterne "optimizer" e "scheduler"
         #nel se usi config = wand.config viene automaticamente fatto in questo modo 
-        self.set_optimizer(config)
-        self.set_scheduler(config)
+        self.new_set_opt(config)
+        self.new_set_scheduler(config)
 
 
 
