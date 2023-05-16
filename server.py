@@ -24,6 +24,15 @@ class Server:
     def select_clients(self):
         num_clients = min(self.args.clients_per_round, len(self.train_clients))
         return np.random.choice(self.train_clients, num_clients, replace=False)
+    
+    def distribute_config_dict(self, config: dict):
+        """
+            This method iterates over each train client and creates in each of them and optimizer and
+            a scheduler according to the configuration contained in config 
+        """
+        for c in self.train_clients:
+            c.create_opt_sch(config)
+
 
     def train_round(self):
         """

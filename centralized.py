@@ -14,6 +14,7 @@ from torch.optim import lr_scheduler
 import numpy as np
 from matplotlib.patches import Rectangle
 import wandb
+from inspect import signature
 
 
 
@@ -33,6 +34,9 @@ class Centralized:
         self.criterion = nn.CrossEntropyLoss(ignore_index=255, reduction='none')
         self.reduction = HardNegativeMining() if self.args.hnm else MeanReduction()
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+        self.optimizer = None 
+        self.scheduler = None
 
 
     @staticmethod
@@ -108,6 +112,56 @@ class Centralized:
         return cumu_loss /len(self.train_loader)
 
 
+    #diz di prova
+    #config = {'optimizer': {'name':'Adam', 'settings':{'lr':0.01, 'momentum':0.5}},
+    #          'scheduler': {'name':'ConstantLR', 'settings':{'factor':0.5, 'gamma':0.5}}}
+    
+    def set_optimizer(self, config):
+        """
+            Creates an optimizier with the parameters contained in config. Also discard the useless settings.
+        """
+        opt_config = config.get('optimizer')
+        opt_name = opt_config.get('name')
+        opt_settings = opt_config.get('settings')
+
+        opt_method = getattr(optim, opt_name)
+        opt_signature  = set(signature(opt_method).parameters.keys())
+        valid_params_k = opt_signature.intersection(set(opt_settings))
+        valid_params_dict = {key: opt_settings[key] for key in valid_params_k}
+        
+        self.optimizer = opt_method(self.model.parameters(), **valid_params_dict)
+        print(self.optimizer)
+    
+    def set_scheduler(self, config):
+        """
+            Creates a scheduler with the parameters contained in config. Also discard the useless settings.
+        """
+        sch_config = config.get('scheduler')
+        sch_name = sch_config.get('name')
+        sch_settings = sch_config.get('settings')
+
+        sch_method = getattr(lr_scheduler, sch_name)
+        sch_signature  = set(signature(sch_method).parameters.keys())
+        valid_params_k = sch_signature.intersection(set(sch_settings))
+        valid_params_dict = {key: sch_settings[key] for key in valid_params_k}
+        
+        self.scheduler = sch_method(self.optimizer, **valid_params_dict)
+        print('Scheduler:\n',type(self.scheduler),"\n", self.scheduler.state_dict())
+
+
+
+    def  create_opt_sch(self, config: dict):
+        """
+            Simply call the method to create the optimizer and the scheduler
+        """
+        #il file config che riceve deve essere un dizionario con chiavi esterne "optimizer" e "scheduler"
+        #nel se usi config = wand.config viene automaticamente fatto in questo modo 
+        self.set_optimizer(config)
+        self.set_scheduler(config)
+
+
+
+    #!da eliminare
     def set_opt(self, params: dict) -> None:
         '''
         This helper function supports us when passing the optimization hyperparameters.
@@ -185,15 +239,15 @@ class Centralized:
 
         # We build the effective optimizer and scheduler. We need first to create fake dictionaries to pass as argument.
         #!dummy_dict = {'params': self.model.classifier.parameters()}
-        dummy_dict = {'params': self.model.parameters()}
-        opt_param = self.params['optimizer']['settings']
-        dummy_dict.update(opt_param)
-        self.optimizer = self.opt_method([dummy_dict])
+        #dummy_dict = {'params': self.model.parameters()}
+        #opt_param = self.params['optimizer']['settings']
+        #dummy_dict.update(opt_param)
+        #self.optimizer = self.opt_method([dummy_dict])
 
-        dummy_dict = {'optimizer': self.optimizer}
-        sch_param = self.params['scheduler']['settings']
-        dummy_dict.update(sch_param)
-        self.scheduler = self.sch_method(**dummy_dict)
+        #dummy_dict = {'optimizer': self.optimizer}
+        #sch_param = self.params['scheduler']['settings']
+        #dummy_dict.update(sch_param)
+        #self.scheduler = self.sch_method(**dummy_dict)
 
 
         # Training loop. We initialize some empty lists because we need to store the information about the statistics computed

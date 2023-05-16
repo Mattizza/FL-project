@@ -20,6 +20,7 @@ from datasets.idda import IDDADataset
 from models.deeplabv3 import deeplabv3_mobilenetv2
 from utils.stream_metrics import StreamSegMetrics, StreamClsMetrics
 from centralized import Centralized
+import yaml
 
 import wandb
 
@@ -212,25 +213,46 @@ def get_sweep_transforms(args, config):
     
     return train_transforms, test_transforms
 
+def yaml_to_dict(path):
+    with open(path, "r") as file:
+        try:
+            return yaml.load(file, Loader=yaml.FullLoader)
+        except yaml.YAMLError as exc:
+            print(exc)
+
 def sweeping(args):
     wandb.login()
     #!passare a file yaml
-    sweep_config = {
-        'method': 'grid',
-        'metric' : {'name': 'loss', 'goal': 'minimize'}
-    }
-    parameters_dict =  {'RndRot':{'values':[True, False]},
-                        'RndHzFlip':{'values':[True, False]},
-                        'RndVertFlip':{'values':[True, False]}}
-                        #,'RndScale':{'values':[True, False]},
-                        #'RndCrop':{'values':[True, False]},
-                        #'RndResizedCrop':{'values':[True, False]},
-                        #'ClrJitter':{'values':[True, False]},
-                        #'RndScaleRndCrop':{'values':[True, False]}
+    #sweep_config = {
+    #    'method': 'random',
+    #    'metric' : {'name': 'loss', 'goal': 'minimize'}
+    #}
+    #parameters_dict =  {
+    #    'optimizer':{'name':['Adam', ]}
+    #}
+   
     
-    sweep_config['parameters'] = parameters_dict
+    #sweep_config['parameters'] = parameters_dict
+    
+    #!togliere commenti per usare yaml
+    #with open('configs/sweep_config.yaml', 'r') as f:
+    #        sweep_config = yaml.safe_load(f)
+    dict_sweep = {'method' : 'random'}
+    metric = {
+        'name' : 'loss',
+        'goal' : 'minimize'
+    }
+    dict_sweep['metric'] = metric
+    parameters = { 
+        'optimizer' : { 'values' : ['Adam','SGD']},
+        'learning_rate' : {'distribution': 'uniform',
+                            'min': 0,
+                            'max': 0.1}
+                            
+    }
+    dict_sweep['parameters'] = parameters
 
-    sweep_id = wandb.sweep(sweep_config, project="pytorch-augmentation1-sweeps")
+    sweep_id = wandb.sweep(dict_sweep, project="test_hyp_sweeps_16-5")
     train_func = lambda: sweep_train(args=args)
     wandb.agent(sweep_id, train_func, count = 1)
 
@@ -242,22 +264,27 @@ def sweep_train(args, config=None):
         model = model_init(args)
         model.cuda()
         print('Done.')
-        train_transforms, test_transforms = get_sweep_transforms(args, config)
-        train_datasets, test_datasets = get_datasets(args=args, train_transforms = train_transforms , test_transforms = test_transforms)
+        if args.wandb == 'transformTuning':
+            train_transforms, test_transforms = get_sweep_transforms(args, config)
+            train_datasets, test_datasets = get_datasets(args=args, train_transforms = train_transforms , test_transforms = test_transforms)
+        elif args.wandb == 'hypTuning':
+            train_datasets, test_datasets = get_datasets(args=args)
+
         train_clients, test_clients = gen_clients(args, train_datasets, test_datasets, model)
         metrics = set_metrics(args)
         server = Server(args, train_clients, test_clients, model, metrics)
-        opt_params = {'optimizer': {
-                            'name'    : 'Adam',
-                            'settings': {'lr'   : 0.01}
-                            },
-              'scheduler': {
-                            'name'    : 'ConstantLR',
-                            'settings': {'factor': 0.33}
-                            }
-              }
-        
-        train_clients[0].set_opt(opt_params)
+        #opt_params = {'optimizer': {
+        #                    'name'    : 'Adam',
+        #                    'settings': {'lr'   : 0.01}
+        #                    },
+        #      'scheduler': {
+        #                    'name'    : 'ConstantLR',
+        #                    'settings': {'factor': 0.33}
+        #                    }
+        #      }
+        #train_clients[0].set_opt(opt_params)
+
+        server.distribute_config_dict(config)
         server.train()    
 
 
@@ -276,14 +303,14 @@ def main():
     
     elif args.wandb == 'singleRun':
         wandb.login()
+
+        with open('esempioYamlNoSweep.yaml', 'r') as f:
+            yaml_config = yaml.safe_load(f)
+
         wandb.init(
             project = 'singleRuns',
-            config = {
-                'opt' = 'Adam'
-                'lr' = 0.01
-                'sch' = 'ConstantLR'
-                'factor' = 0.33
-            })
+            config = yaml_config)
+        
         config = wandb.config
 
         print(f'Initializing model...')
@@ -298,18 +325,7 @@ def main():
         train_clients, test_clients = gen_clients(args, train_datasets, test_datasets, model)
         server = Server(args, train_clients, test_clients, model, metrics)
         
-        opt_params = {'optimizer': {
-                            'name'    : config.get('opt'),
-                            'settings': {'lr'   : config.get('lr')}
-                            },
-              'scheduler': {
-                            'name'    : config.get('sch'),
-                            'settings': {'factor': config.get('factor')}
-                            }
-              }
-        
-        for c in train_clients:
-            c.set_opt(opt_params)
+        server.distribute_config_dict(config)
         server.train()
         
 
@@ -325,6 +341,10 @@ def main():
         metrics = set_metrics(args)
         train_clients, test_clients = gen_clients(args, train_datasets, test_datasets, model)
         server = Server(args, train_clients, test_clients, model, metrics)
+        path = 'esempioYamlNoSweep.yaml'
+        config = yaml_to_dict(path)
+        server.distribute_config_dict(config)
+        
         server.train()
 
 
