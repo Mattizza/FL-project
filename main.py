@@ -215,17 +215,20 @@ def get_sweep_transforms(args, config):
     
     return train_transforms, test_transforms
 
-def get_swwep_transforms2(args, config):
+def get_sweep_transforms2(args, config):
     # TODO: test your data augmentation by changing the transforms here!
     if args.model == 'deeplabv3_mobilenetv2':
         rnd_transforms = []
 
-        if config.RndRot:
+        if config.rndRot:
             rnd_transforms.append(sstr.RandomRotation(10))
-        if config.RndHzFlip:
-            rnd_transforms.append(sstr.RandomHorizontalFlip(10))
-        if config.RndVertFlip:
-            rnd_transforms.append(sstr.RandomVerticalFlip(10))
+        if config.rndHzFlip:
+            rnd_transforms.append(sstr.RandomHorizontalFlip())
+        if config.rndVertFlip:
+            rnd_transforms.append(sstr.RandomVerticalFlip())
+        if config.colorJitter:
+            rnd_transforms.append(sstr.ColorJitter())
+
 
         base_transforms = [
             sstr.RandomResizedCrop((512, 928), scale=(0.5, 2.0)),
@@ -284,7 +287,11 @@ def sweeping(args):
         dict_sweep['parameters'] = parameters
     
     elif args.wandb == 'transformTuning':
-        parameters = {}
+        parameters = {  'rndRot' : {'values':[True, False]},
+                        'rndHzFlip' : {'values':[True, False]},
+                        'rndVertFlip' : {'values':[True, False]},
+                        'colorJitter' : {'values':[True, False]},
+                                   }
         dict_sweep['parameters'] = parameters
         
     
@@ -307,19 +314,26 @@ def sweep_train(args, config = None):
         model = model_init(args)
         model.cuda()
         print('Done.')
+
         if args.wandb == 'transformTuning':
-            train_transforms, test_transforms = get_sweep_transforms(args, config)
+            train_transforms, test_transforms = get_sweep_transforms2(args, config)
             train_datasets, test_datasets = get_datasets(args=args, train_transforms = train_transforms , test_transforms = test_transforms)
-            
+            train_clients, test_clients = gen_clients(args, train_datasets, test_datasets, model)
+            metrics = set_metrics(args)
+            server = Server(args, train_clients, test_clients, model, metrics)
+            path = 'configs/runSingola.yaml'
+            configHyp = yaml_to_dict(path)
+            server.distribute_config_dict(configHyp)
+
+
         elif args.wandb == 'hypTuning':
             train_datasets, test_datasets = get_datasets(args=args)
-
-        train_clients, test_clients = gen_clients(args, train_datasets, test_datasets, model)
-        metrics = set_metrics(args)
-        server = Server(args, train_clients, test_clients, model, metrics)
-
-        server.distribute_config_dict(config)
-        server.train()    
+            train_clients, test_clients = gen_clients(args, train_datasets, test_datasets, model)
+            metrics = set_metrics(args)
+            server = Server(args, train_clients, test_clients, model, metrics)
+            server.distribute_config_dict(config)
+        
+        server.train() 
 
 
 def main():
@@ -375,7 +389,7 @@ def main():
         metrics = set_metrics(args)
         train_clients, test_clients = gen_clients(args, train_datasets, test_datasets, model)
         server = Server(args, train_clients, test_clients, model, metrics)
-        path = 'esempioYamlNoSweep.yaml'
+        path = 'configs/runSingola.yaml'
         config = yaml_to_dict(path)
         server.distribute_config_dict(config)
         
