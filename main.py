@@ -1,10 +1,12 @@
-
 import os
 import json
+from collections import defaultdict
+
 import torch
 import random
-import wandb
+
 import numpy as np
+from torchvision.models import resnet18
 
 import datasets.ss_transforms as sstr
 import datasets.np_transforms as nptr
@@ -19,6 +21,8 @@ from models.deeplabv3 import deeplabv3_mobilenetv2
 from utils.stream_metrics import StreamSegMetrics, StreamClsMetrics
 from centralized import Centralized
 import yaml
+
+import wandb
 
 
 def set_seed(random_seed):
@@ -196,6 +200,32 @@ def get_sweep_transforms(args, config):
         
         for i in range(len(keep)):
             rnd_transforms.append(getattr(sstr, keep[i])) 
+
+        base_transforms = [
+            sstr.RandomResizedCrop((512, 928), scale=(0.5, 2.0)),
+            sstr.ToTensor(),
+            sstr.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+            ]
+        
+        train_transforms = sstr.Compose(rnd_transforms + base_transforms)
+        test_transforms = sstr.Compose(base_transforms)
+
+    else:
+        raise NotImplementedError
+    
+    return train_transforms, test_transforms
+
+def get_swwep_transforms2(args, config):
+    # TODO: test your data augmentation by changing the transforms here!
+    if args.model == 'deeplabv3_mobilenetv2':
+        rnd_transforms = []
+
+        if config.RndRot:
+            rnd_transforms.append(sstr.RandomRotation(10))
+        if config.RndHzFlip:
+            rnd_transforms.append(sstr.RandomHorizontalFlip(10))
+        if config.RndVertFlip:
+            rnd_transforms.append(sstr.RandomVerticalFlip(10))
 
         base_transforms = [
             sstr.RandomResizedCrop((512, 928), scale=(0.5, 2.0)),
