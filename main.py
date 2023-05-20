@@ -294,16 +294,16 @@ def sweeping(args):
                                    }
         dict_sweep['parameters'] = parameters
         
-    
-    sweep_id = wandb.sweep(dict_sweep, project="test_hyp_sweeps_20-5")
-    
-    print('Identificativo della sweep: ', sweep_id)
+        
+    project_name = "test_hyp_sweeps_20-5"
+    if args.sweep_id == None:
+        sweep_id = wandb.sweep(dict_sweep, project = project_name)
+
+    else:
+        sweep_id = args.sweep_id
 
     train_func = lambda: sweep_train(args=args)
-    if args.sweep_id != None:
-        sweep_id = args.sweep_id
-    
-    wandb.agent(sweep_id = sweep_id, function = train_func, count = 10)
+    wandb.agent(sweep_id = sweep_id, function = train_func, count = 1, project = project_name)
 
 
 def sweep_train(args, config = None):
