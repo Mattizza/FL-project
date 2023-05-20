@@ -134,7 +134,7 @@ class Centralized:
     
     def new_set_opt(self, config):
         if config.get('optimizer') =='Adam':
-            self.optimizer = optim.Adam(self.model.parameters(), lr = config.get('learning_rate'), weight_decay = config.get('weight_decay'))
+            self.optimizer = optim.Adam(self.model.parameters(), lr = config.get('learning_rate'))#, weight_decay = config.get('weight_decay'))
         
         elif config.get('optimizer') == 'SGD':
             self.optimizer = optim.SGD(self.model.parameters(), lr = config.get('learning_rate'), momentum = config.get('momentum'),weight_decay = config.get('weight_decay'))
@@ -164,7 +164,7 @@ class Centralized:
         elif config.get('scheduler') == 'ExponentialLR':
             self.scheduler = lr_scheduler.ExponentialLR(self.optimizer, gamma = config.get('gamma'))
         
-        print('Scheduler:\n',type(self.scheduler),"\n", self.scheduler.state_dict())
+        print('\n Scheduler:\n',type(self.scheduler),"\n", self.scheduler.state_dict())
 
 
 
@@ -249,25 +249,6 @@ class Centralized:
 
         self.model.train()
 
-        # Freeze parameters so we don't backprop through them.
-        #!for param in self.model.backbone.parameters():
-        #!    param.requires_grad = False
-            
-        #!print('Params freezed')
-
-        # We build the effective optimizer and scheduler. We need first to create fake dictionaries to pass as argument.
-        #!dummy_dict = {'params': self.model.classifier.parameters()}
-        #dummy_dict = {'params': self.model.parameters()}
-        #opt_param = self.params['optimizer']['settings']
-        #dummy_dict.update(opt_param)
-        #self.optimizer = self.opt_method([dummy_dict])
-
-        #dummy_dict = {'optimizer': self.optimizer}
-        #sch_param = self.params['scheduler']['settings']
-        #dummy_dict.update(sch_param)
-        #self.scheduler = self.sch_method(**dummy_dict)
-
-
         # Training loop. We initialize some empty lists because we need to store the information about the statistics computed
         # on the mini-batches.
         self.n_total_steps = len(self.train_loader)
@@ -301,7 +282,7 @@ class Centralized:
 
 
 
-    #i dati vengono testati sugli stessi dati di training
+    #i dati vengono testati sugli stessi dati di training incluse le transforms
     def test(self, metric):
         """
         This method tests the model on the local dataset of the client.

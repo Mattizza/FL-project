@@ -250,32 +250,22 @@ def yaml_to_dict(path):
 
 def sweeping(args):
     wandb.login()
-    #!passare a file yaml
-    #sweep_config = {
-    #    'method': 'random',
-    #    'metric' : {'name': 'loss', 'goal': 'minimize'}
-    #}
-    #parameters_dict =  {
-    #    'optimizer':{'name':['Adam', ]}
-    #}
-   
-    
-    #sweep_config['parameters'] = parameters_dict
-    
+
     #!togliere commenti per usare yaml
     #with open('configs/sweep_config.yaml', 'r') as f:
     #        sweep_config = yaml.safe_load(f)
+
     dict_sweep = {'method' : 'random'}
     metric = {
-        'name' : 'loss',
-        'goal' : 'minimize'
+        'name' : 'test_same_dom',
+        'goal' : 'maximize'
     }
     dict_sweep['metric'] = metric
     parameters = { 
-        'optimizer' : { 'values' : ['Adam','SGD']},
+        'optimizer' : { 'value' : 'Adam'},
         'learning_rate' : {'distribution': 'uniform',
-                            'min': 0,
-                            'max': 0.1},
+                            'min': 0.0099,
+                            'max': 0.01},
         'weight_decay': {'distribution': 'uniform',
                             'min': 0,
                             'max': 1},
@@ -346,7 +336,7 @@ def main():
     elif args.wandb == 'singleRun':
         wandb.login()
 
-        with open('esempioYamlNoSweep.yaml', 'r') as f:
+        with open('configs/runSingola.yaml', 'r') as f:
             yaml_config = yaml.safe_load(f)
 
         wandb.init(

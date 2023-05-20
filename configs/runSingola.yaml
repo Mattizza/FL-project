@@ -1,0 +1,4 @@
+optimizer : Adam
+learning_rate : 0.01
+scheduler : ConstantLR
+factor : 0.33
