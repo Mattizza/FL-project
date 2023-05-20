@@ -87,7 +87,7 @@ class Server:
         self.model_params_dict = self._aggregate(updates)
 
 
-    def train(self):
+    def train(self, config):
         """
         This method orchestrates the training the evals and tests at rounds level
         """

@@ -1,12 +1,10 @@
+
 import os
 import json
-from collections import defaultdict
-
 import torch
 import random
-
+import wandb
 import numpy as np
-from torchvision.models import resnet18
 
 import datasets.ss_transforms as sstr
 import datasets.np_transforms as nptr
@@ -22,7 +20,6 @@ from utils.stream_metrics import StreamSegMetrics, StreamClsMetrics
 from centralized import Centralized
 import yaml
 
-import wandb
 
 def set_seed(random_seed):
     random.seed(random_seed)
@@ -192,12 +189,13 @@ def get_sweep_transforms(args, config):
     if args.model == 'deeplabv3_mobilenetv2':
         rnd_transforms = []
 
-        if config.RndRot:
-            rnd_transforms.append(sstr.RandomRotation(10))
-        if config.RndHzFlip:
-            rnd_transforms.append(sstr.RandomHorizontalFlip(10))
-        if config.RndVertFlip:
-            rnd_transforms.append(sstr.RandomVerticalFlip(10))
+        # Select only the transforms of interest. We take the string and we build the method.
+        # WARNING: omitted '(10)' as argument like in the previous version.
+        # WARNING: not tested due to problems with WandB API.
+        keep = [value for key, value in config.transforms.items() if value is not np.nan] 
+        
+        for i in range(len(keep)):
+            rnd_transforms.append(getattr(sstr, keep[i])) 
 
         base_transforms = [
             sstr.RandomResizedCrop((512, 928), scale=(0.5, 2.0)),
@@ -270,7 +268,8 @@ def sweeping(args):
     wandb.agent(sweep_id, train_func, count = 4)
 
 
-def sweep_train(args, config=None):
+def sweep_train(args, config = None):
+    
     with wandb.init(config = config):
         config = wandb.config
         print(f'Initializing model...')
