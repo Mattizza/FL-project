@@ -251,41 +251,52 @@ def yaml_to_dict(path):
 def sweeping(args):
     wandb.login()
 
-    #!togliere commenti per usare yaml
-    #with open('configs/sweep_config.yaml', 'r') as f:
-    #        sweep_config = yaml.safe_load(f)
-
     dict_sweep = {'method' : 'random'}
     metric = {
         'name' : 'test_same_dom',
         'goal' : 'maximize'
     }
     dict_sweep['metric'] = metric
-    parameters = { 
-        'optimizer' : { 'value' : 'Adam'},
-        'learning_rate' : {'distribution': 'uniform',
-                            'min': 0.0099,
-                            'max': 0.01},
-        'weight_decay': {'distribution': 'uniform',
-                            'min': 0,
-                            'max': 1},
-        'momentum' : {'distribution': 'uniform',
-                            'min': 0,
-                            'max': 1},
-        'scheduler' : {'values' : ['ConstantLR', 'ExponentialLR']},
-        'factor' : {'distribution':'uniform',
+    
+    if args.wandb ==  'hypTuning':
+        #!togliere commenti per usare yaml
+        #with open('configs/sweep_config.yaml', 'r') as f:
+        #        sweep_config = yaml.safe_load(f)
+
+        parameters = { 
+            'optimizer' : { 'values' : ['Adam', 'SGD']},
+            'learning_rate' : {'values': [0.1, 0.015, 0.01, 0.005, 0.001, 0.0001]},
+            'weight_decay': {'distribution': 'uniform',
+                                'min': 0,
+                                'max': 1},
+            'momentum' : {'distribution': 'uniform',
+                                'min': 0,
+                                'max': 0.5},
+            'scheduler' : {'values' : ['ConstantLR', 'ExponentialLR']},
+            'factor' : {'distribution':'uniform',
+                        'min': 0,
+                        'max': 1},
+            'gamma' : {'distribution':'uniform',
                     'min': 0,
-                    'max': 1},
-        'gamma' : {'distribution':'uniform',
-                   'min': 0,
-                   'max': 1}
-    }
+                    'max': 1}
+        }
 
-    dict_sweep['parameters'] = parameters
+        dict_sweep['parameters'] = parameters
+    
+    elif args.wandb == 'transformTuning':
+        parameters = {}
+        dict_sweep['parameters'] = parameters
+        
+    
+    sweep_id = wandb.sweep(dict_sweep, project="test_hyp_sweeps_20-5")
+    
+    print('Identificativo della sweep: ', sweep_id)
 
-    sweep_id = wandb.sweep(dict_sweep, project="new_test_hyp_sweeps_16-5")
     train_func = lambda: sweep_train(args=args)
-    wandb.agent(sweep_id, train_func, count = 4)
+    if args.sweep_id != None:
+        sweep_id = args.sweep_id
+    
+    wandb.agent(sweep_id = sweep_id, function = train_func, count = 10)
 
 
 def sweep_train(args, config = None):
@@ -299,22 +310,13 @@ def sweep_train(args, config = None):
         if args.wandb == 'transformTuning':
             train_transforms, test_transforms = get_sweep_transforms(args, config)
             train_datasets, test_datasets = get_datasets(args=args, train_transforms = train_transforms , test_transforms = test_transforms)
+            
         elif args.wandb == 'hypTuning':
             train_datasets, test_datasets = get_datasets(args=args)
 
         train_clients, test_clients = gen_clients(args, train_datasets, test_datasets, model)
         metrics = set_metrics(args)
         server = Server(args, train_clients, test_clients, model, metrics)
-        #opt_params = {'optimizer': {
-        #                    'name'    : 'Adam',
-        #                    'settings': {'lr'   : 0.01}
-        #                    },
-        #      'scheduler': {
-        #                    'name'    : 'ConstantLR',
-        #                    'settings': {'factor': 0.33}
-        #                    }
-        #      }
-        #train_clients[0].set_opt(opt_params)
 
         server.distribute_config_dict(config)
         server.train()    

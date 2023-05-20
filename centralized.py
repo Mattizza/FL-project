@@ -134,7 +134,7 @@ class Centralized:
     
     def new_set_opt(self, config):
         if config.get('optimizer') =='Adam':
-            self.optimizer = optim.Adam(self.model.parameters(), lr = config.get('learning_rate'))#, weight_decay = config.get('weight_decay'))
+            self.optimizer = optim.Adam(self.model.parameters(), lr = config.get('learning_rate'), weight_decay = config.get('weight_decay'))
         
         elif config.get('optimizer') == 'SGD':
             self.optimizer = optim.SGD(self.model.parameters(), lr = config.get('learning_rate'), momentum = config.get('momentum'),weight_decay = config.get('weight_decay'))
