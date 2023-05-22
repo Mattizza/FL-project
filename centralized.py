@@ -134,10 +134,13 @@ class Centralized:
     
     def new_set_opt(self, config):
         if config.get('optimizer') =='Adam':
-            self.optimizer = optim.Adam(self.model.parameters(), lr = config.get('learning_rate'), weight_decay = config.get('weight_decay'))
+            self.optimizer = optim.Adam(self.model.parameters(), lr = config.get('learning_rate') , weight_decay = config.get('weight_decay'))
         
         elif config.get('optimizer') == 'SGD':
-            self.optimizer = optim.SGD(self.model.parameters(), lr = config.get('learning_rate'), momentum = config.get('momentum'),weight_decay = config.get('weight_decay'))
+            self.optimizer = optim.SGD(self.model.parameters(), lr = config.get('learning_rate') , momentum = config.get('momentum'),weight_decay = config.get('weight_decay'))
+        
+        elif config.get('optimizer') == 'Adagrad':
+            self.optimizer = optim.Adagrad(self.model.parameters(), lr = config.get('learning_rate') , weight_decay = config.get('weight_decay'))
         
         print(self.optimizer)
     
@@ -163,8 +166,17 @@ class Centralized:
         
         elif config.get('scheduler') == 'ExponentialLR':
             self.scheduler = lr_scheduler.ExponentialLR(self.optimizer, gamma = config.get('gamma'))
-        
-        print('\n Scheduler:\n',type(self.scheduler),"\n", self.scheduler.state_dict())
+
+        elif config.get('scheduler') == 'StepLR':
+            self.scheduler = lr_scheduler.StepLR(self.optimizer, step_size = 2 , gamma = config.get('gamma'))
+        elif config.get('scheduler') == None:
+            self.scheduler = None
+            
+
+        if config.get('scheduler') != None:
+            print('\n Scheduler:\n',type(self.scheduler),"\n", self.scheduler.state_dict())
+        else:
+            print("\nNo scheduler")
 
 
 
@@ -265,7 +277,10 @@ class Centralized:
         for epoch in range(self.args.num_epochs):
 
             avg_loss = self.run_epoch(epoch, n_steps)
-            self.scheduler.step()
+            if self.scheduler != None:
+                self.scheduler.step()
+                wandb.log({"lr": self.scheduler.get_lr()})
+
             if self.args.wandb != None:
                 wandb.log({"loss": avg_loss, "epoch": epoch})
             # Here we are simply computing how many steps do we need to complete an epoch.

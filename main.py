@@ -256,8 +256,8 @@ def sweeping(args):
 
     dict_sweep = {'method' : 'random'}
     metric = {
-        'name' : 'test_same_dom',
-        'goal' : 'maximize'
+        'name' : 'loss',
+        'goal' : 'minimize'
     }
     dict_sweep['metric'] = metric
     
@@ -267,24 +267,34 @@ def sweeping(args):
         #        sweep_config = yaml.safe_load(f)
 
         parameters = { 
-            'optimizer' : { 'values' : ['Adam', 'SGD']},
-            'learning_rate' : {'values': [0.1, 0.015, 0.01, 0.005, 0.001, 0.0001]},
+            'optimizer' : { 'values' : ['Adam', 'SGD', 'Adagrad'],
+                           'distribution' : 'categorical'},
+            'learning_rate' : {'values': [0.01, 0.001, 0.0001, 0.0005, 0.00001]},
+            
             'weight_decay': {'distribution': 'uniform',
-                                'min': 0,
-                                'max': 1},
+                                'min': 0.0,
+                                'max': 1.0},
             'momentum' : {'distribution': 'uniform',
-                                'min': 0,
-                                'max': 0.5},
-            'scheduler' : {'values' : ['ConstantLR', 'ExponentialLR']},
-            'factor' : {'distribution':'uniform',
-                        'min': 0,
-                        'max': 1},
-            'gamma' : {'distribution':'uniform',
-                    'min': 0,
-                    'max': 1}
+                                'min': 0.0,
+                                'max': 1.0},
+            'scheduler' : {'values' : ['ExponentialLR', 'StepLR', None],
+                           'distribution' : 'categorical'
+                           },
+
+            'gamma' : {'values':[0.01, 0.1, 0.33, 0.5, 0.7, 1.0]}
+            
         }
 
+        #parameters = { 
+        #    'optimizer' : { 'value' : 'Adam'},
+        #
+        #    'learning_rate' : {'values': [0.0005, 0.00045],
+        #                       'distribution': 'categorical'}
+        #}
+
         dict_sweep['parameters'] = parameters
+
+        dict_sweep['early_terminate'] = {'type' : 'hyperband', 'min_iter' : 3, 'eta': 2}
     
     elif args.wandb == 'transformTuning':
         parameters = {  'rndRot' : {'values':[True, False]},
@@ -294,8 +304,8 @@ def sweeping(args):
                                    }
         dict_sweep['parameters'] = parameters
         
-        
-    project_name = "test_hyp_sweeps_20-5"
+
+    project_name = "test_hyp_sweeps_22-5"
     if args.sweep_id == None:
         sweep_id = wandb.sweep(dict_sweep, project = project_name)
 
@@ -303,7 +313,7 @@ def sweeping(args):
         sweep_id = args.sweep_id
 
     train_func = lambda: sweep_train(args=args)
-    wandb.agent(sweep_id = sweep_id, function = train_func, count = 1, project = project_name)
+    wandb.agent(sweep_id = sweep_id, function = train_func, count = 20 ,project = project_name)
 
 
 def sweep_train(args, config = None):
