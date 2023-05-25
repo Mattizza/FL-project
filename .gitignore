@@ -3,3 +3,4 @@ idda/
 venv
 *.log
 wandb
+*.png
