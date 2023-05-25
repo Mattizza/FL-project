@@ -1,20 +1,19 @@
-
 import copy
 import torch
-import os
-import wandb
 import numpy as np
-import matplotlib.pyplot as plt
 
 from torch import optim, nn
-from torch.utils.data import DataLoader
-from torch.optim import lr_scheduler
-
-from utils.data_utils import idda_16_cmap, Label2Color
-from utils.utils import HardNegativeMining, MeanReduction, unNormalize
-
-from matplotlib.patches import Rectangle
 from collections import defaultdict
+from torch.utils.data import DataLoader
+from utils.data_utils import idda_16_cmap, Label2Color
+
+from utils.utils import HardNegativeMining, MeanReduction, unNormalize
+import os
+import matplotlib.pyplot as plt
+from torch.optim import lr_scheduler
+import numpy as np
+from matplotlib.patches import Rectangle
+import wandb
 from inspect import signature
 
 
@@ -35,6 +34,9 @@ class Centralized:
         self.criterion = nn.CrossEntropyLoss(ignore_index=255, reduction='none')
         self.reduction = HardNegativeMining() if self.args.hnm else MeanReduction()
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+        self.optimizer = None 
+        self.scheduler = None
 
 
     @staticmethod
@@ -60,7 +62,7 @@ class Centralized:
             -) cur_epoch: current epoch of training;
             -) optimizer: optimizer used for the local training.
         '''
-
+        cumu_loss = 0
         print('epoch', cur_epoch + 1)
         for cur_step, (images, labels) in enumerate(self.train_loader):
                 
@@ -76,13 +78,16 @@ class Centralized:
             outputs = self._get_outputs(images)
             
             loss = self.reduction(self.criterion(outputs,labels), labels)
+            cumu_loss += loss.item()
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
-            
+            if self.args.wandb != None:
+                wandb.log({"batch loss": loss.item()})
+
             # We keep track of the loss. Notice we are storing the loss for
             # each mini-batch.
-            wandb.log({"loss": loss.mean()})
+            #wandb.log({"loss": loss.mean()})
             
             # We are considering 10 batch at a time. TO DO: define a way to handle different values.
             # We are considering n_steps batch at a time.
@@ -102,10 +107,106 @@ class Centralized:
                 # We store the information related to the step in which we computed the loss of the n_steps-th mini-batch. This will
                 # be of use when plotting the learning curve.
                 self.n_10th_steps.append(self.count)
-                print(f'epoch {cur_epoch + 1} / {self.args.num_epochs}, step {cur_step + 1} / {self.n_total_steps}, loss = {loss.mean():.3f} ± {(loss.std() / np.sqrt(self.args.bs)):.3f}')
+                print(f'epoch {cur_epoch + 1} / {self.args.num_epochs}, step {cur_step + 1} / {self.n_total_steps}, loss = {loss.mean():.3f}')
+        
+        return cumu_loss /len(self.train_loader)
 
+
+    #diz di prova
+    #config = {'optimizer': {'name':'Adam', 'settings':{'lr':0.01, 'momentum':0.5}},
+    #          'scheduler': {'name':'ConstantLR', 'settings':{'factor':0.5, 'gamma':0.5}}}
     
-    # WARNING: MAY BE REMOVED OR MAY BE REDEFINED.
+    def set_optimizer(self, config):
+        """
+            Creates an optimizier with the parameters contained in config. Also discard the useless settings.
+        """
+        opt_config = config.get('optimizer')
+        opt_name = opt_config.get('name')
+        opt_settings = opt_config.get('settings')
+
+        opt_method = getattr(optim, opt_name)
+        opt_signature  = set(signature(opt_method).parameters.keys())
+        valid_params_k = opt_signature.intersection(set(opt_settings))
+        valid_params_dict = {key: opt_settings[key] for key in valid_params_k}
+        
+        self.optimizer = opt_method(self.model.parameters(), **valid_params_dict)
+        print(self.optimizer)
+    
+    def new_set_opt(self, config):
+        if config.get('optimizer') =='Adam':
+            self.optimizer = optim.Adam(self.model.parameters(), lr = config.get('learning_rate') , weight_decay = config.get('weight_decay'))
+        
+        elif config.get('optimizer') == 'SGD':
+            self.optimizer = optim.SGD(self.model.parameters(), lr = config.get('learning_rate') , momentum = config.get('momentum'),weight_decay = config.get('weight_decay'))
+        
+        elif config.get('optimizer') == 'Adagrad':
+            self.optimizer = optim.Adagrad(self.model.parameters(), lr = config.get('learning_rate') , weight_decay = config.get('weight_decay'))
+        
+        print(self.optimizer)
+    
+    def set_scheduler(self, config):
+        """
+            Creates a scheduler with the parameters contained in config. Also discard the useless settings.
+        """
+        sch_config = config.get('scheduler')
+        sch_name = sch_config.get('name')
+        sch_settings = sch_config.get('settings')
+
+        sch_method = getattr(lr_scheduler, sch_name)
+        sch_signature  = set(signature(sch_method).parameters.keys())
+        valid_params_k = sch_signature.intersection(set(sch_settings))
+        valid_params_dict = {key: sch_settings[key] for key in valid_params_k}
+        
+        self.scheduler = sch_method(self.optimizer, **valid_params_dict)
+        print('Scheduler:\n',type(self.scheduler),"\n", self.scheduler.state_dict())
+    
+    def new_set_scheduler(self, config):
+        if config.get('scheduler') == 'ConstantLR':
+            self.scheduler = lr_scheduler.ConstantLR(self.optimizer, factor = config.get('factor'))
+        
+        elif config.get('scheduler') == 'ExponentialLR':
+            self.scheduler = lr_scheduler.ExponentialLR(self.optimizer, gamma = config.get('gamma'))
+
+        elif config.get('scheduler') == 'StepLR':
+            self.scheduler = lr_scheduler.StepLR(self.optimizer, step_size = 2 , gamma = config.get('gamma'))
+        elif config.get('scheduler') == None:
+            self.scheduler = None
+            
+
+        if config.get('scheduler') != None:
+            print('\n Scheduler:\n',type(self.scheduler),"\n", self.scheduler.state_dict())
+        else:
+            print("\nNo scheduler")
+
+
+
+    def  create_opt_sch(self, config: dict):
+        """
+            Simply call the method to create the optimizer and the scheduler
+        """
+        #il file config che riceve deve essere un dizionario con chiavi esterne "optimizer" e "scheduler"
+        #nel se usi config = wand.config viene automaticamente fatto in questo modo 
+        self.new_set_opt(config)
+        self.new_set_scheduler(config)
+
+
+
+    #!da eliminare
+    def set_opt(self, params: dict) -> None:
+        '''
+        This helper function supports us when passing the optimization hyperparameters.
+          -) the optimization algorithm and its parameters;
+          -) the rate decay and its parameters.
+        '''
+        
+        # Get parameters and retrieve the methods desidered by the user.
+        self.params = params
+
+        # We extract the names, we'll need them later to extract the methods as well.
+        self.opt, self.sch = params['optimizer']['name'], params['scheduler']['name']
+        self.opt_method, self.sch_method = getattr(optim, self.opt), getattr(lr_scheduler, self.sch)
+
+
     def print_learning(self, step: int, plot_error = False) -> None:
         '''
         Function used to print the learning curves.
@@ -148,113 +249,58 @@ class Centralized:
 
         plt.show()
 
+    def generate_update(self):
+        return copy.deepcopy(self.model.state_dict())
 
-    def optimize(self, 
-                 project: str = None, tags: str = None, notes: str = None,
-                 n_steps: int = 5, 
-                 config = None) -> str:
-      '''
-      We call this function to define a sweep_id that will be passed to the agents. It is an helper function
-      that acts like a gate between the configuration and the search procedure.
-      -) project: the name of the project we are referring to. It must be unique between runs;
-      -) tags: the tags assigned;
-      -) notes: optional notes;
-      -) n_steps: how many steps we want to wait before plotting the loss;
-      -) config: a dictionary containing the configuration of our search.
-      '''
-
-      self.project = project
-      self.tags    = tags
-      self.notes   = notes
-      self.n_steps = n_steps
-      self.config  = config
-
-      # We login with our credentials and we return an id.
-      wandb.login()
-      sweep_id = wandb.sweep(self.config, project = self.project)
-      
-      return sweep_id
-
-
-    def train(self, config = None):
+    def train(self, n_steps=10):
         '''
         This method locally trains the model with the dataset of the client. It handles the training at epochs level
         (by calling the run_epoch method for each local epoch of training)
         :return: length of the local dataset, copy of the model parameters
-        -) config: we set None as default, but it will be passed by the agent at each iteration.
         '''
-        
 
-        # We pass the choosen configuration.
-        with(wandb.init(config = config,
-                        project = self.project, tags = self.tags, notes = self.notes)):
-            
-            self.model.train()
-            config = wandb.config
-            
-            # Freeze parameters so we don't backprop through them.
-            for param in self.model.backbone.parameters():
-                param.requires_grad = False
-            print('Params freezed')
-            
-            # We extract the names, we'll need them later to extract the methods as well. Notice that now
-            # we are acting on the 'config' object and its attributes.
-            self.opt, self.sch = config.optimizer['name'], config.scheduler['name']
-            self.opt_method, self.sch_method = getattr(optim, self.opt), getattr(lr_scheduler, self.sch)
-            
-            # We filter only the arguments we are interested in. We do this by extracting the signature of
-            # the choosen functions and by filtering only the instanciated values thar correspond to it.
-           
-            # Optimizer signature
-            opt_signature = set(signature(getattr(optim, self.opt)).parameters.keys())      
-            
-            # Parameters that belong to the signature only. We build a dictionary that will be of use later.
-            filtered_opt = opt_signature.intersection(set(config.optimizer['settings']))                                  
-            dic_opt = config.optimizer['settings']
-            opt_we_want = {key: dic_opt[key] for key in filtered_opt}
+        self.model.train()
 
-            # We do the same we just did for the optimizer.
-            sch_signature = set(signature(getattr(lr_scheduler, self.sch)).parameters.keys())
-            filtered_sch = sch_signature.intersection(set(config.scheduler['settings']))
-            dic_sch = config.scheduler['settings']
-            sch_we_want = {key: dic_sch[key] for key in filtered_sch}
+        # Training loop. We initialize some empty lists because we need to store the information about the statistics computed
+        # on the mini-batches.
+        self.n_total_steps = len(self.train_loader)
+        self.mean_loss = []
+        self.mean_std  = []
+        self.n_10th_steps = []
+        self.n_epoch_steps = [self.n_total_steps]
+        self.count = 0
 
+       
+        num_train_samples = len(self.dataset)
 
-            # We build the effective optimizer and scheduler. We need first to create fake dictionaries to pass as argument.
-            dummy_dict = {'params': self.model.classifier.parameters()}
-            dummy_dict.update(opt_we_want)
-            self.optimizer = self.opt_method([dummy_dict])
-            dummy_dict = {'optimizer': self.optimizer}      # WARNING: WHY 'optimizer' IF WE ARE REFERRING TO THE SCHEDULER? CHECK
-            dummy_dict.update(sch_we_want)
-            self.scheduler = self.sch_method(**dummy_dict)
+        # We iterate over the epochs.
+        for epoch in range(self.args.num_epochs):
 
-
-            # Training loop. We initialize some empty lists because we need to store the information about the statistics computed
-            # on the mini-batches.
-            # WARNING: to be decided if it is worth it keep this. Do we need learning curves?
-            self.n_total_steps = len(self.train_loader)
-            self.mean_loss = []
-            self.mean_std  = []
-            self.n_10th_steps = []
-            self.n_epoch_steps = [self.n_total_steps]
-            self.count = 0
-
-            # We iterate over the epochs.
-            for epoch in range(self.args.num_epochs):
-
-                self.run_epoch(epoch, self.n_steps)
+            avg_loss = self.run_epoch(epoch, n_steps)
+            if self.scheduler != None:
                 self.scheduler.step()
-                    
-                # Here we are simply computing how many steps do we need to complete an epoch.
-                self.n_epoch_steps.append(self.n_epoch_steps[0] * (epoch + 1))
+                print("\nTramite optimizer - lr: ", self.optimizer.param_groups[0]['lr'])
+                print("\nTramite scheduler - lr: ", self.scheduler.get_last_lr()[0])
+                if self.args.wandb != None:
+                    wandb.log({"lr": self.scheduler.get_last_lr()[0]})
+
+            if self.args.wandb != None:
+                wandb.log({"loss": avg_loss, "epoch": epoch})
+            # Here we are simply computing how many steps do we need to complete an epoch.
+            self.n_epoch_steps.append(self.n_epoch_steps[0] * (epoch + 1))
                     
             
             print('Training finished!')
-            torch.save(self.model.classifier.state_dict(), 'modelliSalvati/checkpoint.pth')
-            print('Model saved!')
+            #!torch.save(self.model.classifier.state_dict(), 'modelliSalvati/checkpoint.pth')
+            #!print('Model saved!')
+
+        update = self.generate_update()
+        
+        return num_train_samples, update
 
 
-    #i dati vengono testati sugli stessi dati di training
+
+    #i dati vengono testati sugli stessi dati di training incluse le transforms
     def test(self, metric):
         """
         This method tests the model on the local dataset of the client.
@@ -275,11 +321,12 @@ class Centralized:
         :param int ix: index of the image in self.dataset
         :param float alpha: transparency index
         """
-        img = self.dataset[ix][0].cuda()
-        outputLogit = self.model(img.view(1, 3, 512, 928))['out'][0]
-        prediction = outputLogit.argmax(0)
-        label2color = Label2Color(idda_16_cmap())
-        pred_mask = label2color(prediction.cpu()).astype(np.uint8)
-        plt.imshow(unNormalize(img.cpu()).permute(1,2,0))
-        plt.imshow(pred_mask, alpha = alpha)
-
+        self.model.eval()
+        with torch.no_grad():
+            img = self.dataset[ix][0].cuda()
+            outputLogit = self.model(img.view(1, 3, 512, 928))['out'][0]
+            prediction = outputLogit.argmax(0)
+            label2color = Label2Color(idda_16_cmap())
+            pred_mask = label2color(prediction.cpu()).astype(np.uint8)
+            plt.imshow(unNormalize(img.cpu()).permute(1,2,0))
+            plt.imshow(pred_mask, alpha = alpha)

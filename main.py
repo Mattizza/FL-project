@@ -19,6 +19,10 @@ from utils.args import get_parser
 from datasets.idda import IDDADataset
 from models.deeplabv3 import deeplabv3_mobilenetv2
 from utils.stream_metrics import StreamSegMetrics, StreamClsMetrics
+from centralized import Centralized
+import yaml
+
+import wandb
 
 
 def set_seed(random_seed):
@@ -95,10 +99,12 @@ def read_femnist_data(train_data_dir, test_data_dir):
     return read_femnist_dir(train_data_dir), read_femnist_dir(test_data_dir)
 
 
-def get_datasets(args):
+def get_datasets(args, train_transforms = None, test_transforms = None):
 
     train_datasets = []
-    train_transforms, test_transforms = get_transforms(args)
+
+    if train_transforms == None or test_transforms == None:
+        train_transforms, test_transforms = get_transforms(args)
 
     if args.dataset == 'idda' or args.dataset == 'iddaCB':
         root = 'data/idda'
@@ -168,11 +174,176 @@ def set_metrics(args):
 
 
 def gen_clients(args, train_datasets, test_datasets, model):
-    clients = [[], []]
-    for i, datasets in enumerate([train_datasets, test_datasets]):
-        for ds in datasets:
-            clients[i].append(Client(args, ds, model, test_client=i == 1))
+    if (args.dataset == 'idda') :
+        clients = [[], []]
+        for i, datasets in enumerate([train_datasets, test_datasets]):
+            for ds in datasets:
+                clients[i].append(Centralized(args, ds, model, test_client=i == 1)) #Chiamare centralized Client
+
+    elif args.dataset == 'iddaCB':
+        clients = [[], []]
+        for i, datasets in enumerate([train_datasets, test_datasets]):
+            for ds in datasets:
+                clients[i].append(Centralized(args, ds, model, test_client=i == 1))
+
     return clients[0], clients[1]
+
+def get_sweep_transforms(args, config):
+    # TODO: test your data augmentation by changing the transforms here!
+    if args.model == 'deeplabv3_mobilenetv2':
+        rnd_transforms = []
+
+        # Select only the transforms of interest. We take the string and we build the method.
+        # WARNING: omitted '(10)' as argument like in the previous version.
+        # WARNING: not tested due to problems with WandB API.
+        keep = [value for key, value in config.transforms.items() if value is not np.nan] 
+        
+        for i in range(len(keep)):
+            rnd_transforms.append(getattr(sstr, keep[i])) 
+
+        base_transforms = [
+            sstr.RandomResizedCrop((512, 928), scale=(0.5, 2.0)),
+            sstr.ToTensor(),
+            sstr.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+            ]
+        
+        train_transforms = sstr.Compose(rnd_transforms + base_transforms)
+        test_transforms = sstr.Compose(base_transforms)
+
+    else:
+        raise NotImplementedError
+    
+    return train_transforms, test_transforms
+
+def get_sweep_transforms2(args, config):
+    # TODO: test your data augmentation by changing the transforms here!
+    if args.model == 'deeplabv3_mobilenetv2':
+        rnd_transforms = []
+
+        if config.rndRot:
+            rnd_transforms.append(sstr.RandomRotation(10))
+        if config.rndHzFlip:
+            rnd_transforms.append(sstr.RandomHorizontalFlip())
+        if config.rndVertFlip:
+            rnd_transforms.append(sstr.RandomVerticalFlip())
+        if config.colorJitter:
+            rnd_transforms.append(sstr.ColorJitter())
+
+
+        base_transforms = [
+            sstr.RandomResizedCrop((512, 928), scale=(0.5, 2.0)),
+            sstr.ToTensor(),
+            sstr.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+            ]
+        
+        train_transforms = sstr.Compose(rnd_transforms + base_transforms)
+        test_transforms = sstr.Compose(base_transforms)
+
+    else:
+        raise NotImplementedError
+    
+    return train_transforms, test_transforms
+
+def yaml_to_dict(path):
+    with open(path, "r") as file:
+        try:
+            return yaml.load(file, Loader=yaml.FullLoader)
+        except yaml.YAMLError as exc:
+            print(exc)
+
+def sweeping(args):
+    wandb.login()
+
+    dict_sweep = {'method' : 'random'}
+    metric = {
+        'name' : 'loss',
+        'goal' : 'minimize'
+    }
+    dict_sweep['metric'] = metric
+    
+    if args.wandb ==  'hypTuning':
+        #!togliere commenti per usare yaml
+        #with open('configs/sweep_config.yaml', 'r') as f:
+        #        sweep_config = yaml.safe_load(f)
+
+        parameters = { 
+            'optimizer' : { 'values' : ['Adam', 'SGD', 'Adagrad'],
+                           'distribution' : 'categorical'},
+            'learning_rate' : {'values': [0.01, 0.001, 0.0001, 0.0005, 0.00001]},
+            
+            'weight_decay': {'distribution': 'uniform',
+                                'min': 0.0,
+                                'max': 1.0},
+            'momentum' : {'distribution': 'uniform',
+                                'min': 0.0,
+                                'max': 1.0},
+            'scheduler' : {'values' : ['ExponentialLR', 'StepLR', None],
+                           'distribution' : 'categorical'
+                           },
+
+            'gamma' : {'values':[0.01, 0.1, 0.33, 0.5, 0.7, 1.0]}
+            
+        }
+
+        #parameters = { 
+        #    'optimizer' : { 'value' : 'Adam'},
+        #
+        #    'learning_rate' : {'values': [0.0005, 0.00045],
+        #                       'distribution': 'categorical'}
+        #}
+
+        dict_sweep['parameters'] = parameters
+
+        dict_sweep['early_terminate'] = {'type' : 'hyperband', 'min_iter' : 3, 'eta': 2}
+    
+    elif args.wandb == 'transformTuning':
+        parameters = {  'rndRot' : {'values':[True, False]},
+                        'rndHzFlip' : {'values':[True, False]},
+                        'rndVertFlip' : {'values':[True, False]},
+                        'colorJitter' : {'values':[True, False]},
+                                   }
+        dict_sweep['parameters'] = parameters
+        
+
+    project_name = "test_hyp_sweeps_22-5"
+    if args.sweep_id == None:
+        sweep_id = wandb.sweep(dict_sweep, project = project_name)
+
+    else:
+        sweep_id = args.sweep_id
+
+    train_func = lambda: sweep_train(args=args)
+    wandb.agent(sweep_id = sweep_id, function = train_func, count = 20 ,project = project_name)
+
+
+def sweep_train(args, config = None):
+    
+    with wandb.init(config = config):
+        config = wandb.config
+        print(f'Initializing model...')
+        model = model_init(args)
+        model.cuda()
+        print('Done.')
+
+        if args.wandb == 'transformTuning':
+            train_transforms, test_transforms = get_sweep_transforms2(args, config)
+            train_datasets, test_datasets = get_datasets(args=args, train_transforms = train_transforms , test_transforms = test_transforms)
+            train_clients, test_clients = gen_clients(args, train_datasets, test_datasets, model)
+            metrics = set_metrics(args)
+            server = Server(args, train_clients, test_clients, model, metrics)
+            path = 'configs/runSingola.yaml'
+            configHyp = yaml_to_dict(path)
+            server.distribute_config_dict(configHyp)
+
+
+        elif args.wandb == 'hypTuning':
+            train_datasets, test_datasets = get_datasets(args=args)
+            train_clients, test_clients = gen_clients(args, train_datasets, test_datasets, model)
+            metrics = set_metrics(args)
+            server = Server(args, train_clients, test_clients, model, metrics)
+            server.distribute_config_dict(config)
+        
+        server.train() 
 
 
 def main():
@@ -180,19 +351,59 @@ def main():
     args = parser.parse_args()
     set_seed(args.seed)
 
-    print(f'Initializing model...')
-    model = model_init(args)
-    model.cuda()
-    print('Done.')
+    #print(f'Initializing model...')
+    #model = model_init(args)
+    #model.cuda()
+    #print('Done.')
 
-    print('Generate datasets...')
-    train_datasets, test_datasets = get_datasets(args)
-    print('Done.')
+    if args.wandb == 'hypTuning' or args.wandb == 'transformTuning':
+        sweeping(args)
+    
+    elif args.wandb == 'singleRun':
+        wandb.login()
 
-    metrics = set_metrics(args)
-    train_clients, test_clients = gen_clients(args, train_datasets, test_datasets, model)
-    server = Server(args, train_clients, test_clients, model, metrics)
-    server.train()
+        with open('configs/runSingola.yaml', 'r') as f:
+            yaml_config = yaml.safe_load(f)
+
+        wandb.init(
+            project = 'singleRuns',
+            config = yaml_config)
+        
+        config = wandb.config
+
+        print(f'Initializing model...')
+        model = model_init(args)
+        model.cuda()
+        print('Done.')
+        print('Generate datasets...')
+        train_datasets, test_datasets = get_datasets(args)
+        print('Done.')
+
+        metrics = set_metrics(args)
+        train_clients, test_clients = gen_clients(args, train_datasets, test_datasets, model)
+        server = Server(args, train_clients, test_clients, model, metrics)
+        
+        server.distribute_config_dict(config)
+        server.train()
+        
+
+    elif args.wandb == None:
+        print(f'Initializing model...')
+        model = model_init(args)
+        model.cuda()
+        print('Done.')
+        print('Generate datasets...')
+        train_datasets, test_datasets = get_datasets(args)
+        print('Done.')
+
+        metrics = set_metrics(args)
+        train_clients, test_clients = gen_clients(args, train_datasets, test_datasets, model)
+        server = Server(args, train_clients, test_clients, model, metrics)
+        path = 'configs/runSingola.yaml'
+        config = yaml_to_dict(path)
+        server.distribute_config_dict(config)
+        
+        server.train()
 
 
 if __name__ == '__main__':
