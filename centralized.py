@@ -279,7 +279,10 @@ class Centralized:
             avg_loss = self.run_epoch(epoch, n_steps)
             if self.scheduler != None:
                 self.scheduler.step()
-                wandb.log({"lr": self.scheduler.get_lr()})
+                print("\nTramite optimizer - lr: ", self.optimizer.param_groups[0]['lr'])
+                print("\nTramite scheduler - lr: ", self.scheduler.get_last_lr()[0])
+                if self.args.wandb != None:
+                    wandb.log({"lr": self.scheduler.get_last_lr()[0]})
 
             if self.args.wandb != None:
                 wandb.log({"loss": avg_loss, "epoch": epoch})
