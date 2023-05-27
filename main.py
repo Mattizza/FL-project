@@ -9,14 +9,13 @@ import numpy as np
 from torchvision.models import resnet18
 
 import datasets.ss_transforms as sstr
-import datasets.np_transforms as nptr
 
 from torch import nn
 from client import Client
-from datasets.femnist import Femnist
 from server import Server
 from utils.args import get_parser
 from datasets.idda import IDDADataset
+from datasets.gta5 import GTA5
 from models.deeplabv3 import deeplabv3_mobilenetv2
 from utils.stream_metrics import StreamSegMetrics, StreamClsMetrics
 from centralized import Centralized
@@ -149,6 +148,9 @@ def get_datasets(args, train_transforms = None, test_transforms = None):
         for user, data in test_data.items():
             test_datasets.append(Femnist(data, test_transforms, user))
 
+    elif args.dataset == 'gta5':
+        train_datasets.append(GTA5(transform=train_transforms, test_transform=test_transforms, target_dataset='idda'))
+
     else:
         raise NotImplementedError
 
@@ -254,7 +256,7 @@ def yaml_to_dict(path):
 def sweeping(args):
     wandb.login()
 
-    dict_sweep = {'method' : 'random'}
+    dict_sweep = {'method' : 'grid'}
     metric = {
         'name' : 'loss',
         'goal' : 'minimize'
@@ -292,6 +294,26 @@ def sweeping(args):
         #                       'distribution': 'categorical'}
         #}
 
+        # First we define our configuration
+        parameters = {        
+                'optimizer': {
+                    'parameters': {
+                                'name': {'values': ['Adam', 'SGD']},
+                                'lr'      : {'value': 0.0005}#,
+                                #'momentum': {'max': 1, 'min': 0}
+                                    }
+                            },
+
+                'scheduler': {
+                    'parameters':{
+                                'name'  : {'value': 'ReduceLROnPlateau'},
+                                'patience': {'value': 2}
+                                #'gamma' : {'max': 1, 'min': 0.1},
+                                #'factor': {'max': 1, 'min': 0.1}
+                                }
+                            }
+                        }
+        
         dict_sweep['parameters'] = parameters
 
         dict_sweep['early_terminate'] = {'type' : 'hyperband', 'min_iter' : 3, 'eta': 2}
@@ -305,7 +327,7 @@ def sweeping(args):
         dict_sweep['parameters'] = parameters
         
 
-    project_name = "test_hyp_sweeps_22-5"
+    project_name = "test_hyp_sweeps_AdamvsSGD20e"
     if args.sweep_id == None:
         sweep_id = wandb.sweep(dict_sweep, project = project_name)
 
@@ -313,7 +335,7 @@ def sweeping(args):
         sweep_id = args.sweep_id
 
     train_func = lambda: sweep_train(args=args)
-    wandb.agent(sweep_id = sweep_id, function = train_func, count = 20 ,project = project_name)
+    wandb.agent(sweep_id = sweep_id, function = train_func, count = 2 ,project = project_name)
 
 
 def sweep_train(args, config = None):
@@ -401,6 +423,13 @@ def main():
         server = Server(args, train_clients, test_clients, model, metrics)
         path = 'configs/runSingola.yaml'
         config = yaml_to_dict(path)
+        config =  {
+    'optimizer':{'name': 'Adam',
+                'lr':0.005,
+                'weight_decay': 0.5},
+    'scheduler':{'name': 'ExponentialLR',
+                 'gamma':0.005}
+                 }
         server.distribute_config_dict(config)
         
         server.train()

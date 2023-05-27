@@ -122,12 +122,10 @@ class Centralized:
         """
         opt_config = config.get('optimizer')
         opt_name = opt_config.get('name')
-        opt_settings = opt_config.get('settings')
-
         opt_method = getattr(optim, opt_name)
         opt_signature  = set(signature(opt_method).parameters.keys())
-        valid_params_k = opt_signature.intersection(set(opt_settings))
-        valid_params_dict = {key: opt_settings[key] for key in valid_params_k}
+        valid_params_k = opt_signature.intersection(set(opt_config))
+        valid_params_dict = {key: opt_config[key] for key in valid_params_k}
         
         self.optimizer = opt_method(self.model.parameters(), **valid_params_dict)
         print(self.optimizer)
@@ -150,15 +148,15 @@ class Centralized:
         """
         sch_config = config.get('scheduler')
         sch_name = sch_config.get('name')
-        sch_settings = sch_config.get('settings')
-
-        sch_method = getattr(lr_scheduler, sch_name)
-        sch_signature  = set(signature(sch_method).parameters.keys())
-        valid_params_k = sch_signature.intersection(set(sch_settings))
-        valid_params_dict = {key: sch_settings[key] for key in valid_params_k}
-        
-        self.scheduler = sch_method(self.optimizer, **valid_params_dict)
-        print('Scheduler:\n',type(self.scheduler),"\n", self.scheduler.state_dict())
+        if sch_name != 'None':
+            sch_method = getattr(lr_scheduler, sch_name)
+            sch_signature  = set(signature(sch_method).parameters.keys())
+            valid_params_k = sch_signature.intersection(set(sch_config))
+            valid_params_dict = {key: sch_config[key] for key in valid_params_k}
+            self.scheduler = sch_method(self.optimizer, **valid_params_dict)
+            print('Scheduler:\n',type(self.scheduler),"\n", self.scheduler.state_dict())
+        else:
+            print("No scheduler")
     
     def new_set_scheduler(self, config):
         if config.get('scheduler') == 'ConstantLR':
@@ -186,25 +184,8 @@ class Centralized:
         """
         #il file config che riceve deve essere un dizionario con chiavi esterne "optimizer" e "scheduler"
         #nel se usi config = wand.config viene automaticamente fatto in questo modo 
-        self.new_set_opt(config)
-        self.new_set_scheduler(config)
-
-
-
-    #!da eliminare
-    def set_opt(self, params: dict) -> None:
-        '''
-        This helper function supports us when passing the optimization hyperparameters.
-          -) the optimization algorithm and its parameters;
-          -) the rate decay and its parameters.
-        '''
-        
-        # Get parameters and retrieve the methods desidered by the user.
-        self.params = params
-
-        # We extract the names, we'll need them later to extract the methods as well.
-        self.opt, self.sch = params['optimizer']['name'], params['scheduler']['name']
-        self.opt_method, self.sch_method = getattr(optim, self.opt), getattr(lr_scheduler, self.sch)
+        self.set_optimizer(config)
+        self.set_scheduler(config)
 
 
     def print_learning(self, step: int, plot_error = False) -> None:
@@ -275,14 +256,13 @@ class Centralized:
 
         # We iterate over the epochs.
         for epoch in range(self.args.num_epochs):
-
+            if self.args.wandb != None:
+                    wandb.log({"lr": self.optimizer.param_groups[0]['lr']})
             avg_loss = self.run_epoch(epoch, n_steps)
             if self.scheduler != None:
-                self.scheduler.step()
-                print("\nTramite optimizer - lr: ", self.optimizer.param_groups[0]['lr'])
-                print("\nTramite scheduler - lr: ", self.scheduler.get_last_lr()[0])
-                if self.args.wandb != None:
-                    wandb.log({"lr": self.scheduler.get_last_lr()[0]})
+                self.scheduler.step(avg_loss)
+                #print("\nTramite optimizer - lr: ", self.optimizer.param_groups[0]['lr'])
+                #print("\nTramite scheduler - lr: ", self.scheduler.get_last_lr()[0])
 
             if self.args.wandb != None:
                 wandb.log({"loss": avg_loss, "epoch": epoch})

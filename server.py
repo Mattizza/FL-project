@@ -111,8 +111,8 @@ class Server:
             #self.model_params_dict = new_state_dict
             
             #! spenti per hyp tuning più veloce
-            #self.eval_train()
-            #self.test()
+            self.eval_train()
+            self.test()
 
         
 
