@@ -39,6 +39,8 @@ def get_dataset_num_classes(dataset):
         return 16
     if dataset == 'femnist':
         return 62
+    if dataset == 'gta5':
+        return 16
     raise NotImplementedError
 
 
@@ -118,9 +120,8 @@ def get_datasets(args, train_transforms = None, test_transforms = None):
             with open(os.path.join(root, 'train.txt'), 'r') as f:
                 train_data = f.read().splitlines()
                 train_datasets.append(IDDADataset(root=root, list_samples=train_data, transform=train_transforms,
-                                                    client_name="Unique"))
-            
-            
+                                                    client_name="iddaTrain"))
+                       
         with open(os.path.join(root, 'test_same_dom.txt'), 'r') as f:
             test_same_dom_data = f.read().splitlines()
             test_same_dom_dataset = IDDADataset(root=root, list_samples=test_same_dom_data, transform=test_transforms,
@@ -149,7 +150,26 @@ def get_datasets(args, train_transforms = None, test_transforms = None):
             test_datasets.append(Femnist(data, test_transforms, user))
 
     elif args.dataset == 'gta5':
-        train_datasets.append(GTA5(transform=train_transforms, test_transform=test_transforms, target_dataset='idda'))
+        train_datasets.append(GTA5(transform=train_transforms, test_transform=test_transforms, client_name = 'train_gta5',target_dataset='idda'))
+        
+        idda_root = 'data/idda'
+        with open(os.path.join(idda_root, 'train.txt'), 'r') as f:
+            idda_train_data = f.read().splitlines()
+            idda_train = IDDADataset(root=idda_root, list_samples=idda_train_data, transform=train_transforms,
+                                                client_name="idda_test")
+            
+            
+        with open(os.path.join(idda_root, 'test_same_dom.txt'), 'r') as f:
+            test_same_dom_data = f.read().splitlines()
+            test_same_dom_dataset = IDDADataset(root=idda_root, list_samples=test_same_dom_data, transform=test_transforms,
+                                                client_name='test_same_dom')
+            
+        with open(os.path.join(idda_root, 'test_diff_dom.txt'), 'r') as f:
+            test_diff_dom_data = f.read().splitlines()
+            test_diff_dom_dataset = IDDADataset(root=idda_root, list_samples=test_diff_dom_data, transform=test_transforms,
+                                                client_name='test_diff_dom')
+            
+        test_datasets = [idda_train, test_same_dom_dataset, test_diff_dom_dataset]
 
     else:
         raise NotImplementedError
@@ -159,12 +179,20 @@ def get_datasets(args, train_transforms = None, test_transforms = None):
 
 def set_metrics(args):
     num_classes = get_dataset_num_classes(args.dataset)
-    if args.model == 'deeplabv3_mobilenetv2':
+    if args.model == 'deeplabv3_mobilenetv2' and (args.dataset == 'idda' or args.dataset == 'iddaCB'):
         metrics = {
             'eval_train': StreamSegMetrics(num_classes, 'eval_train'),
             'test_same_dom': StreamSegMetrics(num_classes, 'test_same_dom'),
             'test_diff_dom': StreamSegMetrics(num_classes, 'test_diff_dom')
         }
+    elif args.model == 'deeplabv3_mobilenetv2' and args.dataset == 'gta5':
+        metrics = {
+            'eval_train': StreamSegMetrics(num_classes, 'eval_train'),
+            'idda_test' : StreamSegMetrics(num_classes, 'idda_test'),
+            'test_same_dom': StreamSegMetrics(num_classes, 'test_same_dom'),
+            'test_diff_dom': StreamSegMetrics(num_classes, 'test_diff_dom')
+        }
+
     elif args.model == 'resnet18' or args.model == 'cnn':
         metrics = {
             'eval_train': StreamClsMetrics(num_classes, 'eval_train'),
@@ -176,13 +204,19 @@ def set_metrics(args):
 
 
 def gen_clients(args, train_datasets, test_datasets, model):
-    if (args.dataset == 'idda') :
+    if args.dataset == 'idda':
         clients = [[], []]
         for i, datasets in enumerate([train_datasets, test_datasets]):
             for ds in datasets:
                 clients[i].append(Centralized(args, ds, model, test_client=i == 1)) #Chiamare centralized Client
 
     elif args.dataset == 'iddaCB':
+        clients = [[], []]
+        for i, datasets in enumerate([train_datasets, test_datasets]):
+            for ds in datasets:
+                clients[i].append(Centralized(args, ds, model, test_client=i == 1))
+    
+    elif args.dataset == 'gta5':
         clients = [[], []]
         for i, datasets in enumerate([train_datasets, test_datasets]):
             for ds in datasets:
@@ -365,7 +399,9 @@ def sweep_train(args, config = None):
             server = Server(args, train_clients, test_clients, model, metrics)
             server.distribute_config_dict(config)
         
-        server.train() 
+        server.train()
+        server.eval_train()
+        server.test()
 
 
 def main():
@@ -384,7 +420,7 @@ def main():
     elif args.wandb == 'singleRun':
         wandb.login()
 
-        with open('configs/runSingola.yaml', 'r') as f:
+        with open('configs/newRunSingola.yaml', 'r') as f:
             yaml_config = yaml.safe_load(f)
 
         wandb.init(
@@ -407,6 +443,8 @@ def main():
         
         server.distribute_config_dict(config)
         server.train()
+        server.eval_train()
+        server.test()
         
 
     elif args.wandb == None:
@@ -433,6 +471,8 @@ def main():
         server.distribute_config_dict(config)
         
         server.train()
+        server.eval_train()
+        server.test()
 
 
 if __name__ == '__main__':

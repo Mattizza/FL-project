@@ -30,7 +30,7 @@ class GTA5(VisionDataset):
             33: 15, # bicycle
             }}
 
-    def __init__(self, transform=None, test_transform=None, test = False, target_dataset=None):
+    def __init__(self, client_name: str = None, transform=None, test_transform=None, test = False, target_dataset=None):
         """
         Params:
         * test: if True apply only test_transform, if False apply only transform
@@ -42,6 +42,7 @@ class GTA5(VisionDataset):
         self.labels2train = GTA5.labels2train[target_dataset]
         self.test_transform = test_transform
         self.target_transform = self.__map_labels()
+        self.client_name = client_name
         
         with open(os.path.join(self.root, 'train.txt'), 'r') as f:
             self.list_samples = f.read().splitlines()

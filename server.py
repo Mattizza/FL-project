@@ -18,7 +18,10 @@ class Server:
         self.model_params_dict = copy.deepcopy(self.model.state_dict())
         #per setting centralized
         self.params = None
-        self.mious = {'eval_train':[], "test_same_dom":[], "test_diff_dom":[]}
+        if args.dataset != 'gta5':
+            self.mious = {'eval_train':[], "test_same_dom":[], "test_diff_dom":[]}
+        elif args.dataset == 'gta5':
+            self.mious = {'eval_train': [], 'idda_test':[], "test_same_dom":[], "test_diff_dom":[]}
         
 
     def select_clients(self):
@@ -60,7 +63,7 @@ class Server:
         :param updates: updates received from the clients
         :return: aggregated parameters
         """
-        if self.args.dataset == 'iddaCB':
+        if self.args.dataset == 'iddaCB' or self.args.dataset == 'gta5':
             return updates[0][1]
         
         elif self.args.dataset == 'idda':
@@ -109,12 +112,14 @@ class Server:
             #self.update_model(updates) #aggiorna self.model_params_dict
             #self.model.load_state_dict = self.model_params_dict
             #self.model_params_dict = new_state_dict
-            
-            #! spenti per hyp tuning più veloce
-            self.eval_train()
-            self.test()
+    
+    def save_model_opt_sch():
+        pass
+    
+    def load_model_opt_sch(path = ):
+        pass
 
-        
+
 
 
     def eval_train(self):
@@ -129,7 +134,7 @@ class Server:
         metric = self.metrics['eval_train']
         metric.reset()
         print(f"Testing train clients")
-        for client in self.train_clients: #tutti i client o solo i selected?
+        for client in self.train_clients:
             #print(f"Testing client {client.name}...")
             self.load_server_model_on_client(client)
             client.test(metric)
