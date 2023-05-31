@@ -103,6 +103,7 @@ def read_femnist_data(train_data_dir, test_data_dir):
 def get_datasets(args, train_transforms = None, test_transforms = None):
 
     train_datasets = []
+    test_train_datasets = []
 
     if train_transforms == None or test_transforms == None:
         train_transforms, test_transforms = get_transforms(args)
@@ -115,11 +116,17 @@ def get_datasets(args, train_transforms = None, test_transforms = None):
             for client_id in all_data.keys():
                 train_datasets.append(IDDADataset(root=root, list_samples=all_data[client_id], transform=train_transforms,
                                                 client_name=client_id))
+                
+                test_train_datasets.append(IDDADataset(root=root, list_samples=all_data[client_id], transform = test_transforms,
+                                                client_name=client_id))
         
         elif args.dataset == 'iddaCB':
             with open(os.path.join(root, 'train.txt'), 'r') as f:
                 train_data = f.read().splitlines()
                 train_datasets.append(IDDADataset(root=root, list_samples=train_data, transform=train_transforms,
+                                                    client_name="iddaTrain"))
+                
+                test_train_datasets.append(IDDADataset(root=root, list_samples=train_data, transform=test_transforms,
                                                     client_name="iddaTrain"))
                        
         with open(os.path.join(root, 'test_same_dom.txt'), 'r') as f:
@@ -174,8 +181,10 @@ def get_datasets(args, train_transforms = None, test_transforms = None):
     else:
         raise NotImplementedError
 
-    return train_datasets, test_datasets
+    return train_datasets, test_train_datasets, test_datasets
 
+    #[train_dataset], [test_train_dataset], [test_same_dom_data, test_diff__dom]
+    
 
 def set_metrics(args):
     num_classes = get_dataset_num_classes(args.dataset)
@@ -203,24 +212,21 @@ def set_metrics(args):
     return metrics
 
 
-def gen_clients(args, train_datasets, test_datasets, model):
-    if args.dataset == 'idda':
-        clients = [[], []]
-        for i, datasets in enumerate([train_datasets, test_datasets]):
-            for ds in datasets:
-                clients[i].append(Centralized(args, ds, model, test_client=i == 1)) #Chiamare centralized Client
+def gen_clients(args, train_datasets, test_train_datasets, test_datasets, model):
+    clients = [[], []]
 
-    elif args.dataset == 'iddaCB':
-        clients = [[], []]
-        for i, datasets in enumerate([train_datasets, test_datasets]):
-            for ds in datasets:
-                clients[i].append(Centralized(args, ds, model, test_client=i == 1))
+    for train_dataset, test_train_dataset in zip(train_datasets, test_train_datasets):
+        clients[0].append(Centralized(args, train_dataset = train_dataset, test_dataset = test_train_dataset, model = model))
     
-    elif args.dataset == 'gta5':
-        clients = [[], []]
-        for i, datasets in enumerate([train_datasets, test_datasets]):
-            for ds in datasets:
-                clients[i].append(Centralized(args, ds, model, test_client=i == 1))
+    for test_dataset in test_datasets:
+        clients[1].append(Centralized(args, train_dataset=None, test_dataset = test_dataset, model = model, test_client=True))
+
+    """
+    clients = [[], []]
+    for i, datasets in enumerate([train_datasets, test_datasets]):
+        for ds in datasets:
+            clients[i].append(Centralized(args, ds, model, test_client=i == 1))
+    """
 
     return clients[0], clients[1]
 
@@ -383,8 +389,8 @@ def sweep_train(args, config = None):
 
         if args.wandb == 'transformTuning':
             train_transforms, test_transforms = get_sweep_transforms2(args, config)
-            train_datasets, test_datasets = get_datasets(args=args, train_transforms = train_transforms , test_transforms = test_transforms)
-            train_clients, test_clients = gen_clients(args, train_datasets, test_datasets, model)
+            train_datasets, test_train_datasets, test_datasets = get_datasets(args=args, train_transforms = train_transforms , test_transforms = test_transforms)
+            train_clients, test_clients = gen_clients(args, train_datasets, test_train_datasets, test_datasets, model)
             metrics = set_metrics(args)
             server = Server(args, train_clients, test_clients, model, metrics)
             path = 'configs/runSingola.yaml'
@@ -393,8 +399,8 @@ def sweep_train(args, config = None):
 
 
         elif args.wandb == 'hypTuning':
-            train_datasets, test_datasets = get_datasets(args=args)
-            train_clients, test_clients = gen_clients(args, train_datasets, test_datasets, model)
+            train_datasets, test_train_datasets, test_datasets = get_datasets(args=args)
+            train_clients, test_clients = gen_clients(args, train_datasets, test_train_datasets, test_datasets, model)
             metrics = set_metrics(args)
             server = Server(args, train_clients, test_clients, model, metrics)
             server.distribute_config_dict(config)
@@ -434,11 +440,11 @@ def main():
         model.cuda()
         print('Done.')
         print('Generate datasets...')
-        train_datasets, test_datasets = get_datasets(args)
+        train_datasets, test_train_datasets, test_datasets = get_datasets(args)
         print('Done.')
 
         metrics = set_metrics(args)
-        train_clients, test_clients = gen_clients(args, train_datasets, test_datasets, model)
+        train_clients, test_clients = gen_clients(args, train_datasets, test_train_datasets, test_datasets, model)
         server = Server(args, train_clients, test_clients, model, metrics)
         
         server.distribute_config_dict(config)
@@ -453,11 +459,11 @@ def main():
         model.cuda()
         print('Done.')
         print('Generate datasets...')
-        train_datasets, test_datasets = get_datasets(args)
+        train_datasets, test_train_datasets, test_datasets = get_datasets(args)
         print('Done.')
 
         metrics = set_metrics(args)
-        train_clients, test_clients = gen_clients(args, train_datasets, test_datasets, model)
+        train_clients, test_clients = gen_clients(args, train_datasets, test_train_datasets,test_datasets, model)
         server = Server(args, train_clients, test_clients, model, metrics)
         path = 'configs/runSingola.yaml'
         config = yaml_to_dict(path)

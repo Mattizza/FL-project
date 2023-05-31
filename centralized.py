@@ -20,17 +20,18 @@ from inspect import signature
 
 class Centralized:
 
-    def __init__(self, args, dataset, model, test_client=False):
+    def __init__(self, args, train_dataset, test_dataset, model, test_client=False):
         
         self.args = args
-        self.dataset = dataset
-        self.name = self.dataset.client_name
+        self.train_dataset = train_dataset if not test_client else None 
+        self.test_dataset = test_dataset
+        self.name = self.test_dataset.client_name
         self.model = model
         #! da rimuovere se si passa dal main 
         self.model.cuda()
-        self.train_loader = DataLoader(self.dataset, batch_size=self.args.bs, shuffle=True, drop_last=True) \
+        self.train_loader = DataLoader(self.train_dataset, batch_size=self.args.bs, shuffle=True, drop_last=True) \
             if not test_client else None
-        self.test_loader = DataLoader(self.dataset, batch_size=1, shuffle=False)
+        self.test_loader = DataLoader(self.test_dataset, batch_size=1, shuffle=False)
         self.criterion = nn.CrossEntropyLoss(ignore_index=255, reduction='none')
         self.reduction = HardNegativeMining() if self.args.hnm else MeanReduction()
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -220,7 +221,7 @@ class Centralized:
         plt.legend([extra, markers, lines[0]], (text, 'Loss ± SE', 'Epoch'))
 
         # We plot a line for each step (e.g. one line each n_steps mini-batches).
-        xticks = np.arange(step, self.args.num_epochs * np.floor(len(self.dataset) / self.args.bs) , step)
+        xticks = np.arange(step, self.args.num_epochs * np.floor(len(self.train_dataset) / self.args.bs) , step)
         plt.xticks(xticks)
         plt.grid(axis = 'x', alpha = 0.5)
         
@@ -252,36 +253,41 @@ class Centralized:
         self.count = 0
 
        
-        num_train_samples = len(self.dataset)
+        num_train_samples = len(self.train_dataset)
+        
+        #initialize with highest possible number to keep track of the lowest loss
+        min_loss = float("inf") 
 
         # We iterate over the epochs.
         for epoch in range(self.args.num_epochs):
+            
+            # wandb
             if self.args.wandb != None:
                     wandb.log({"lr": self.optimizer.param_groups[0]['lr']})
+
             avg_loss = self.run_epoch(epoch, n_steps)
+            
+            # ==== Saving the model if in centralized framework ====
+            
+            #compare current epoch avg_loss with the overall min_loss
+            if avg_loss < min_loss and self.args.framework == 'centralized' and self.args.saveModel.lower()=='true':
+                min_loss = avg_loss
+                self.save_model_opt_sch(epoch)
+
+            #if there is a scheduler do a step at each epoch
             if self.scheduler != None:
                 self.scheduler.step(avg_loss)
                 
-
+            # wandb
             if self.args.wandb != None:
                 wandb.log({"loss": avg_loss, "epoch": epoch})
             
             # Here we are simply computing how many steps do we need to complete an epoch.
             self.n_epoch_steps.append(self.n_epoch_steps[0] * (epoch + 1))
 
-
-            # ==== Saving the model if in centralized framework ====
-            #TODO: aggiungere una condizione che se la avg_loss non migliora il modello non viene salvato.
-            if self.args.framework == 'centralized' and self.args.saveModel.lower()=='true':
-                self.save_model_opt_sch(epoch)
-
-
-            #!torch.save(self.model.classifier.state_dict(), 'modelliSalvati/checkpoint.pth')
-            #!print('Model saved!')
-
         update = self.generate_update()
         
-        return num_train_samples, update
+        return num_train_samples, update, avg_loss
 
 
 
@@ -308,7 +314,7 @@ class Centralized:
         """
         self.model.eval()
         with torch.no_grad():
-            img = self.dataset[ix][0].cuda()
+            img = self.train_dataset[ix][0].cuda()
             outputLogit = self.model(img.view(1, 3, 512, 928))['out'][0]
             prediction = outputLogit.argmax(0)
             label2color = Label2Color(idda_16_cmap())

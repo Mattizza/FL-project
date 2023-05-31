@@ -47,16 +47,22 @@ class Server:
         """
         Fa il train sul trainClient (train.txt)
         """
+        num_samples_each_client = []
         updates = []
+        avg_losses = []
         for i, client in enumerate(self.select_clients()):
             print(client.name)
             self.load_server_model_on_client(client)
-            num_samples, update = client.train()
+            num_samples, update , avg_loss= client.train()
 
             #client_update = copy.deepcopy(client.model.state_dict())
             updates.append((num_samples, update))
-
-        return updates #una lista di model.state_dict() dei diversi clients
+            
+            num_samples_each_client.append(num_samples)
+            avg_losses.append(avg_loss)
+        
+        round_avg_loss = np.average(avg_losses, weights = num_samples_each_client)
+        return updates, round_avg_loss #update is a list of model.state_dict(), each one of a different client
     
     def _aggregate(self, updates):
         """
@@ -94,32 +100,29 @@ class Server:
     def train(self):
         """
         This method orchestrates the training the evals and tests at rounds level
-        """
-        """
+        
         Train chiama train_round(), salva il modello restituito da train_round(),
         chiama eval_train (train.txt) che fa l'evaluation sul train client e test()
         che fa l'evaluation su entrambi i test clients (test_same_dom e test_diff_dom)
         """
+        round_min_loss = float('inf')
+
         for round in range(self.args.num_rounds):
             print(f'\nround {round+1}')
-            #funzione per scegliere m train_clients
 
-            updates = self.train_round() #crea un lista [(num_samples, model_state_dict),...,]           
+            updates, round_avg_loss = self.train_round() #crea un lista [(num_samples, model_state_dict),...,]           
             
             new_model_parmas = self._aggregate(updates)
             self.model.load_state_dict(new_model_parmas)
             self.model_params_dict = copy.deepcopy(self.model.state_dict())
 
             # ==== Saving the model if in federated framework ====
-            #TODO: aggiungere una condizione che se la avg_loss non migliora il modello non viene salvato.
-            if self.args.framework == 'federated' and self.args.saveModel.lower()=='true':
+            if round_avg_loss < round_min_loss and self.args.framework == 'federated' and self.args.saveModel.lower()=='true':
+                round_min_loss = round_avg_loss
                 self.save_model_opt_sch(round+1)
             
         print("\nTraining finisched!")
 
-            #self.update_model(updates) #aggiorna self.model_params_dict
-            #self.model.load_state_dict = self.model_params_dict
-            #self.model_params_dict = new_state_dict
     
     def save_model_opt_sch(self, rounds = None, epochs = None):
         
