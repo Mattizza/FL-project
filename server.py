@@ -4,7 +4,8 @@ from centralized import Centralized
 import numpy as np
 import torch
 import wandb
-
+#from utils import definePath
+import os
 
 class Server:
 
@@ -100,7 +101,7 @@ class Server:
         che fa l'evaluation su entrambi i test clients (test_same_dom e test_diff_dom)
         """
         for round in range(self.args.num_rounds):
-            print(f'round {round+1}')
+            print(f'\nround {round+1}')
             #funzione per scegliere m train_clients
 
             updates = self.train_round() #crea un lista [(num_samples, model_state_dict),...,]           
@@ -109,14 +110,44 @@ class Server:
             self.model.load_state_dict(new_model_parmas)
             self.model_params_dict = copy.deepcopy(self.model.state_dict())
 
+            # ==== Saving the model if in federated framework ====
+            #TODO: aggiungere una condizione che se la avg_loss non migliora il modello non viene salvato.
+            if self.args.framework == 'federated' and self.args.saveModel.lower()=='true':
+                self.save_model_opt_sch(round+1)
+            
+        print("\nTraining finisched!")
+
             #self.update_model(updates) #aggiorna self.model_params_dict
             #self.model.load_state_dict = self.model_params_dict
             #self.model_params_dict = new_state_dict
     
-    def save_model_opt_sch():
-        pass
+    def save_model_opt_sch(self, rounds = None, epochs = None):
+        
+        state = {"model_state": self.model.state_dict()}
+
+        #! magari in seguito aggiungi anche lo stato dell'optimizer e dello scheduler
+        #"optimizer_state": self.optimizer.state_dict(),
+        #"scheduler_state": self.scheduler.state_dict()}
+
+        #if self.args.framework == 'federated' or self.args.dataset == 'idda': #idda da rimuovere, lasciare solo centralized
+        #    state['round': rounds]
+
+        #elif self.args.framework == 'centralized' or self.args.dataset == 'iddaCB' or self.args.dataset == 'gta5' :
+        #    state["epoch": epochs]
+
+        state['round'] = rounds
+        #! creare una funzione per definire nomi dei path personalizzati in base a optimizer, numero epoche etc
+        
+        #customPath = definePath(self.args)
+        root = 'savedModels'
+        customPath = 'firstTry.pth.tar'
+        path = os.path.join(root, customPath)
+        torch.save(state, path)
+        
+        print('Server saved model at ', path)
+        
     
-    def load_model_opt_sch(path = ):
+    def load_model_opt_sch():
         pass
 
 

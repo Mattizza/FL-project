@@ -20,8 +20,15 @@ def get_parser():
     parser.add_argument('--print_test_interval', type=int, default=10, help='client print test interval')
     parser.add_argument('--eval_interval', type=int, default=10, help='eval interval')
     parser.add_argument('--test_interval', type=int, default=10, help='test interval')
-    
+
+    parser.add_argument('--framework', type=str, choices = ['centralized', 'federated'], required=True, help = 'Choose a centralized or a federated framework')
+
     #wandb args
     parser.add_argument('--wandb', type = str, choices=[None, 'singleRun', 'hypTuning', 'transformTuning'], default= None, help='None: deactivate wandb, singleRun: track a single run with fixed parameters, hypTuning: do hyperparam tuning')
     parser.add_argument('--sweep_id', type = str, default= None, help='pass a sweep id to log all the runs into the same sweep')
+
+    #saving model
+    parser.add_argument('--saveModel', type = str, choices=['true', 'false'], default='false', help='Decide if you want to save the best model created during the training')
+    parser.add_argument('--loadModel', type = str, default=None, help='write relative path if you want to load an existing model')
+
     return parser

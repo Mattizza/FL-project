@@ -63,7 +63,7 @@ class Centralized:
             -) optimizer: optimizer used for the local training.
         '''
         cumu_loss = 0
-        print('epoch', cur_epoch + 1)
+        print('\nepoch', cur_epoch + 1)
         for cur_step, (images, labels) in enumerate(self.train_loader):
                 
             # Total steps needed to complete an epoch. Computed as:
@@ -261,16 +261,21 @@ class Centralized:
             avg_loss = self.run_epoch(epoch, n_steps)
             if self.scheduler != None:
                 self.scheduler.step(avg_loss)
-                #print("\nTramite optimizer - lr: ", self.optimizer.param_groups[0]['lr'])
-                #print("\nTramite scheduler - lr: ", self.scheduler.get_last_lr()[0])
+                
 
             if self.args.wandb != None:
                 wandb.log({"loss": avg_loss, "epoch": epoch})
+            
             # Here we are simply computing how many steps do we need to complete an epoch.
             self.n_epoch_steps.append(self.n_epoch_steps[0] * (epoch + 1))
-                    
-            
-            print('Training finished!')
+
+
+            # ==== Saving the model if in centralized framework ====
+            #TODO: aggiungere una condizione che se la avg_loss non migliora il modello non viene salvato.
+            if self.args.framework == 'centralized' and self.args.saveModel.lower()=='true':
+                self.save_model_opt_sch(epoch)
+
+
             #!torch.save(self.model.classifier.state_dict(), 'modelliSalvati/checkpoint.pth')
             #!print('Model saved!')
 
@@ -310,3 +315,20 @@ class Centralized:
             pred_mask = label2color(prediction.cpu()).astype(np.uint8)
             plt.imshow(unNormalize(img.cpu()).permute(1,2,0))
             plt.imshow(pred_mask, alpha = alpha)
+    
+    def save_model_opt_sch(self, epochs = None):
+        
+        state = {"model_state": self.model.state_dict(), "epoch": epochs+1}
+
+        #! magari in seguito aggiungi anche lo stato dell'optimizer e dello scheduler
+        #"optimizer_state": self.optimizer.state_dict(),
+        #"scheduler_state": self.scheduler.state_dict()}
+
+        #! creare una funzione per definire nomi dei path personalizzati in base a optimizer, numero epoche etc
+        #customPath = definePath(self.args)
+        customPath = 'firstTry.pth.tar'
+        root = 'savedModels'
+        path = os.path.join(root, customPath)
+        torch.save(state, path)
+        
+        print('Client saved model at ', path)
