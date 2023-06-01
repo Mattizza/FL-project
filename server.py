@@ -105,6 +105,12 @@ class Server:
         chiama eval_train (train.txt) che fa l'evaluation sul train client e test()
         che fa l'evaluation su entrambi i test clients (test_same_dom e test_diff_dom)
         """
+        # ==== Loading the checkpoint if enabled====
+        if self.args.checkpoint_to_load != None:
+            self.load_model_opt_sch()
+            print(f"Checkpoint {self.args.checkpoint_to_load} loaded")
+
+
         round_min_loss = float('inf')
 
         for round in range(self.args.num_rounds):
@@ -116,15 +122,15 @@ class Server:
             self.model.load_state_dict(new_model_parmas)
             self.model_params_dict = copy.deepcopy(self.model.state_dict())
 
-            # ==== Saving the model if in federated framework ====
-            if round_avg_loss < round_min_loss and self.args.framework == 'federated' and self.args.saveModel.lower()=='true':
+            # ==== Saving the checkpoint if in federated framework ====
+            if round_avg_loss < round_min_loss and self.args.framework == 'federated' and self.args.name_checkpoint_to_save != None:
                 round_min_loss = round_avg_loss
                 self.save_model_opt_sch(round+1)
             
         print("\nTraining finisched!")
 
     
-    def save_model_opt_sch(self, rounds = None, epochs = None):
+    def save_model_opt_sch(self, rounds = None):
         
         state = {"model_state": self.model.state_dict()}
 
@@ -143,17 +149,19 @@ class Server:
         
         #customPath = definePath(self.args)
         root = 'savedModels'
-        customPath = 'firstTry.pth.tar'
+        customPath = self.args.name_checkpoint_to_save
         path = os.path.join(root, customPath)
         torch.save(state, path)
         
-        print('Server saved model at ', path)
+        print('Server saved checkpoint at ', path)
         
     
-    def load_model_opt_sch():
-        pass
-
-
+    def load_model_opt_sch(self):
+        root = "savedModels"
+        path = os.path.join(root, self.args.checkpoint_to_load)
+        state = torch.load(path)
+        print(f"\n=> Loading the model trained for {state['round']}")
+        self.model.load_state_dict(state['model_state'])
 
 
     def eval_train(self):

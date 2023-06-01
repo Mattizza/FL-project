@@ -270,7 +270,7 @@ class Centralized:
             # ==== Saving the model if in centralized framework ====
             
             #compare current epoch avg_loss with the overall min_loss
-            if avg_loss < min_loss and self.args.framework == 'centralized' and self.args.saveModel.lower()=='true':
+            if avg_loss < min_loss and self.args.framework == 'centralized' and self.args.name_checkpoint_to_save != None:
                 min_loss = avg_loss
                 self.save_model_opt_sch(epoch)
 
@@ -337,4 +337,4 @@ class Centralized:
         path = os.path.join(root, customPath)
         torch.save(state, path)
         
-        print('Client saved model at ', path)
+        print('Client saved checkpoint at ', path)

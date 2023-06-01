@@ -7,7 +7,7 @@ def get_parser():
     parser.add_argument('--dataset', type=str, choices=['idda', 'iddaCB', 'femnist', 'gta5'], required=True, help='dataset name')
     parser.add_argument('--niid', action='store_true', default=False,
                         help='Run the experiment with the non-IID partition (IID by default). Only on FEMNIST dataset.')
-    parser.add_argument('--model', type=str, choices=['deeplabv3_mobilenetv2', 'resnet18', 'cnn'], help='model name')
+    parser.add_argument('--model', type=str, choices=['deeplabv3_mobilenetv2', 'resnet18', 'cnn'], default = 'deeplabv3_mobilenetv2' ,help='model name')
     parser.add_argument('--num_rounds', type=int, help='number of rounds')
     parser.add_argument('--num_epochs', type=int, help='number of local epochs')
     parser.add_argument('--clients_per_round', type=int, help='number of clients trained per round')
@@ -28,7 +28,7 @@ def get_parser():
     parser.add_argument('--sweep_id', type = str, default= None, help='pass a sweep id to log all the runs into the same sweep')
 
     #saving model
-    parser.add_argument('--saveModel', type = str, choices=['true', 'false'], default='false', help='Decide if you want to save the best model created during the training')
-    parser.add_argument('--loadModel', type = str, default=None, help='write relative path if you want to load an existing model')
+    parser.add_argument('--name_checkpoint_to_save', type = str, default = None, help='chose a name for the checkpoint you want to save, omit to avoid saving the checkpoint (include extention .pth.tar)')
+    parser.add_argument('--checkpoint_to_load', type = str, default=None, help='write the name of the checkpoint to be loaded, otherwise leave default')
 
     return parser
