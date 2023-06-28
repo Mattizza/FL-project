@@ -34,7 +34,7 @@ def set_seed(random_seed):
 
 
 def get_dataset_num_classes(dataset):
-    if dataset == 'idda' or dataset == 'iddaCB':
+    if dataset == 'idda':
         return 16
     if dataset == 'femnist':
         return 62
@@ -107,9 +107,9 @@ def get_datasets(args, train_transforms = None, test_transforms = None):
     if train_transforms == None or test_transforms == None:
         train_transforms, test_transforms = get_transforms(args)
 
-    if args.dataset == 'idda' or args.dataset == 'iddaCB':
+    if args.dataset == 'idda':
         root = 'data/idda'
-        if args.dataset == 'idda':
+        if args.framework == 'federated':
             with open(os.path.join(root, 'train.json'), 'r') as f:
                 all_data = json.load(f)
             for client_id in all_data.keys():
@@ -119,7 +119,7 @@ def get_datasets(args, train_transforms = None, test_transforms = None):
                 test_train_datasets.append(IDDADataset(root=root, list_samples=all_data[client_id], transform = test_transforms,
                                                 client_name=client_id))
         
-        elif args.dataset == 'iddaCB':
+        elif args.framework == 'centralized':
             with open(os.path.join(root, 'train.txt'), 'r') as f:
                 train_data = f.read().splitlines()
                 train_datasets.append(IDDADataset(root=root, list_samples=train_data, transform=train_transforms,
@@ -187,7 +187,7 @@ def get_datasets(args, train_transforms = None, test_transforms = None):
 
 def set_metrics(args):
     num_classes = get_dataset_num_classes(args.dataset)
-    if args.model == 'deeplabv3_mobilenetv2' and (args.dataset == 'idda' or args.dataset == 'iddaCB'):
+    if args.model == 'deeplabv3_mobilenetv2' and args.dataset == 'idda':
         metrics = {
             'eval_train': StreamSegMetrics(num_classes, 'eval_train'),
             'test_same_dom': StreamSegMetrics(num_classes, 'test_same_dom'),

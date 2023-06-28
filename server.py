@@ -74,10 +74,10 @@ class Server:
         :param updates: updates received from the clients
         :return: aggregated parameters
         """
-        if self.args.dataset == 'iddaCB' or self.args.dataset == 'gta5':
+        if self.args.framework == 'centralized':
             return updates[0][1]
         
-        elif self.args.dataset == 'idda':
+        elif self.args.framework == 'federated':
             m_tot_samples = 0
             base = OrderedDict()
 
