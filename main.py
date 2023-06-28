@@ -18,7 +18,6 @@ from datasets.idda import IDDADataset
 from datasets.gta5 import GTA5
 from models.deeplabv3 import deeplabv3_mobilenetv2
 from utils.stream_metrics import StreamSegMetrics, StreamClsMetrics
-from centralized import Centralized
 import yaml
 
 import wandb
@@ -216,16 +215,16 @@ def gen_clients(args, train_datasets, test_train_datasets, test_datasets, model)
     clients = [[], []]
 
     for train_dataset, test_train_dataset in zip(train_datasets, test_train_datasets):
-        clients[0].append(Centralized(args, train_dataset = train_dataset, test_dataset = test_train_dataset, model = model))
+        clients[0].append(Client(args, train_dataset = train_dataset, test_dataset = test_train_dataset, model = model))
     
     for test_dataset in test_datasets:
-        clients[1].append(Centralized(args, train_dataset=None, test_dataset = test_dataset, model = model, test_client=True))
+        clients[1].append(Client(args, train_dataset=None, test_dataset = test_dataset, model = model, test_client=True))
 
     """
     clients = [[], []]
     for i, datasets in enumerate([train_datasets, test_datasets]):
         for ds in datasets:
-            clients[i].append(Centralized(args, ds, model, test_client=i == 1))
+            clients[i].append(Client(args, ds, model, test_client=i == 1))
     """
 
     return clients[0], clients[1]

@@ -1,6 +1,6 @@
 import copy
 from collections import OrderedDict
-from centralized import Centralized
+from client import Client
 import numpy as np
 import torch
 import wandb
@@ -11,8 +11,8 @@ class Server:
 
     def __init__(self, args, train_clients, test_clients, model, metrics):
         self.args = args
-        self.train_clients = train_clients #lista con un solo elemento (istanza della classe centralized (test_client = False))
-        self.test_clients = test_clients #lista con due elementi (istanza della classe centralized (test_client = True))
+        self.train_clients = train_clients #lista con un solo elemento (istanza della classe client (test_client = False))
+        self.test_clients = test_clients #lista con due elementi (istanza della classe client (test_client = True))
         #self.selected_clients = [] #client che vengono selezionati ad ogni round
         self.model = model #da passare poi al client
         self.metrics = metrics
