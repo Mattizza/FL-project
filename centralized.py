@@ -36,7 +36,7 @@ class Centralized:
         self.reduction = HardNegativeMining() if self.args.hnm else MeanReduction()
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-        self.optimizer = None 
+        self.optimizer = None
         self.scheduler = None
 
 
@@ -64,7 +64,7 @@ class Centralized:
             -) optimizer: optimizer used for the local training.
         '''
         cumu_loss = 0
-        print('\nepoch', cur_epoch + 1)
+        print('Epoch', cur_epoch + 1)
         for cur_step, (images, labels) in enumerate(self.train_loader):
                 
             # Total steps needed to complete an epoch. Computed as:
@@ -83,7 +83,7 @@ class Centralized:
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
-            if self.args.wandb != None:
+            if self.args.wandb != None and self.args.framework == 'centralized':
                 wandb.log({"batch loss": loss.item()})
 
             # We keep track of the loss. Notice we are storing the loss for
@@ -129,7 +129,7 @@ class Centralized:
         valid_params_dict = {key: opt_config[key] for key in valid_params_k}
         
         self.optimizer = opt_method(self.model.parameters(), **valid_params_dict)
-        print(self.optimizer)
+        #print(self.optimizer)
     
     def new_set_opt(self, config):
         if config.get('optimizer') =='Adam':
@@ -155,7 +155,7 @@ class Centralized:
             valid_params_k = sch_signature.intersection(set(sch_config))
             valid_params_dict = {key: sch_config[key] for key in valid_params_k}
             self.scheduler = sch_method(self.optimizer, **valid_params_dict)
-            print('Scheduler:\n',type(self.scheduler),"\n", self.scheduler.state_dict())
+            #print('Scheduler:\n',type(self.scheduler),"\n", self.scheduler.state_dict())
         else:
             print("No scheduler")
     
@@ -262,7 +262,7 @@ class Centralized:
         for epoch in range(self.args.num_epochs):
             
             # wandb
-            if self.args.wandb != None:
+            if self.args.wandb != None and self.args.framework == 'centralized':
                     wandb.log({"lr": self.optimizer.param_groups[0]['lr']})
 
             avg_loss = self.run_epoch(epoch, n_steps)
@@ -276,10 +276,10 @@ class Centralized:
 
             #if there is a scheduler do a step at each epoch
             if self.scheduler != None:
-                self.scheduler.step(avg_loss)
+                self.scheduler.step()
                 
             # wandb
-            if self.args.wandb != None:
+            if self.args.wandb != None and self.args.framework == 'centralized':
                 wandb.log({"loss": avg_loss, "epoch": epoch})
             
             # Here we are simply computing how many steps do we need to complete an epoch.

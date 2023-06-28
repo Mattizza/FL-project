@@ -62,6 +62,10 @@ class Server:
             avg_losses.append(avg_loss)
         
         round_avg_loss = np.average(avg_losses, weights = num_samples_each_client)
+
+        if self.args.wandb != None and self.args.framework == 'federated':
+                wandb.log({"round loss": round_avg_loss})
+
         return updates, round_avg_loss #update is a list of model.state_dict(), each one of a different client
     
     def _aggregate(self, updates):
@@ -112,9 +116,9 @@ class Server:
 
 
         round_min_loss = float('inf')
-
+        
         for round in range(self.args.num_rounds):
-            print(f'\nround {round+1}')
+            print(f'\nRound {round+1}\n')
 
             updates, round_avg_loss = self.train_round() #crea un lista [(num_samples, model_state_dict),...,]           
             
@@ -127,7 +131,7 @@ class Server:
                 round_min_loss = round_avg_loss
                 self.save_model_opt_sch(round+1)
             
-        print("\nTraining finisched!")
+        print("\nTraining finished!")
 
     
     def save_model_opt_sch(self, rounds = None):
@@ -160,7 +164,10 @@ class Server:
         root = "savedModels"
         path = os.path.join(root, self.args.checkpoint_to_load)
         state = torch.load(path)
-        print(f"\n=> Loading the model trained for {state['round']}")
+        if self.args.framework == 'federated':
+            print(f"\n=> Loading the model trained for {state['round']} rounds")
+        elif self.args.framework == 'centralized':
+            print(f"\n=> Loading the model trained for {state['epoch']} epochs")
         self.model.load_state_dict(state['model_state'])
 
 
