@@ -373,7 +373,7 @@ def sweeping(args):
         sweep_id = args.sweep_id
 
     train_func = lambda: sweep_train(args=args)
-    wandb.agent(sweep_id = sweep_id, function = train_func, count = 2 ,project = project_name)
+    wandb.agent(sweep_id = sweep_id, function = train_func, count = 10, project = project_name)
 
 
 def sweep_train(args, config = None):
@@ -412,11 +412,6 @@ def main():
     parser = get_parser()
     args = parser.parse_args()
     set_seed(args.seed)
-
-    #print(f'Initializing model...')
-    #model = model_init(args)
-    #model.cuda()
-    #print('Done.')
 
     if args.wandb == 'hypTuning' or args.wandb == 'transformTuning':
         sweeping(args)

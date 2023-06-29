@@ -12,9 +12,9 @@ parameters:
         values: ["SGD", "Adam", "AdamW", "RMSprop"]
         distribution: categorical
   
-      learning_rate:
-        distribution: uniform
-        min: 0.00001 
+      lr:
+        distribution: log_uniform_values
+        min: 1e-05 
         max: 0.1
 
       weight_decay: #SGD, Adam, AdamW, RMSprop
