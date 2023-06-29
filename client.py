@@ -129,7 +129,7 @@ class Client:
         valid_params_dict = {key: opt_config[key] for key in valid_params_k}
         
         self.optimizer = opt_method(self.model.parameters(), **valid_params_dict)
-        #print(self.optimizer)
+        print(self.optimizer)
     
     def new_set_opt(self, config):
         if config.get('optimizer') =='Adam':
@@ -155,7 +155,7 @@ class Client:
             valid_params_k = sch_signature.intersection(set(sch_config))
             valid_params_dict = {key: sch_config[key] for key in valid_params_k}
             self.scheduler = sch_method(self.optimizer, **valid_params_dict)
-            #print('Scheduler:\n',type(self.scheduler),"\n", self.scheduler.state_dict())
+            print('Scheduler:\n',type(self.scheduler),"\n", self.scheduler.state_dict())
         else:
             print("No scheduler")
     
@@ -276,7 +276,7 @@ class Client:
 
             #if there is a scheduler do a step at each epoch
             if self.scheduler != None:
-                self.scheduler.step()
+                self.scheduler.step(avg_loss)
                 
             # wandb
             if self.args.wandb != None and self.args.framework == 'centralized':

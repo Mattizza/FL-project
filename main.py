@@ -295,19 +295,18 @@ def yaml_to_dict(path):
 def sweeping(args):
     wandb.login()
 
-    dict_sweep = {'method' : 'grid'}
+    """dict_sweep = {'method' : 'grid'}
     metric = {
         'name' : 'loss',
         'goal' : 'minimize'
     }
     dict_sweep['metric'] = metric
-    
+    """
     if args.wandb ==  'hypTuning':
-        #!togliere commenti per usare yaml
-        #with open('configs/sweep_config.yaml', 'r') as f:
-        #        sweep_config = yaml.safe_load(f)
+        with open('configs/hypTuningStep1_29_06.yaml', 'r') as f:
+                dict_sweep = yaml.safe_load(f)
 
-        parameters = { 
+        """parameters = { 
             'optimizer' : { 'values' : ['Adam', 'SGD', 'Adagrad'],
                            'distribution' : 'categorical'},
             'learning_rate' : {'values': [0.01, 0.001, 0.0001, 0.0005, 0.00001]},
@@ -364,9 +363,9 @@ def sweeping(args):
                         'colorJitter' : {'values':[True, False]},
                                    }
         dict_sweep['parameters'] = parameters
-        
+    """    
 
-    project_name = "test_hyp_sweeps_AdamvsSGD20e"
+    project_name = "29_06_testTask1"
     if args.sweep_id == None:
         sweep_id = wandb.sweep(dict_sweep, project = project_name)
 

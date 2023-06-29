@@ -1,0 +1,48 @@
+method : random
+
+metric:
+  name: loss
+  goal: minimize
+
+parameters:
+  optimizer:
+    parameters:
+
+      name: 
+        values: ["SGD", "Adam", "AdamW", "RMSprop"]
+        distribution: categorical
+  
+      learning_rate:
+        distribution: uniform
+        min: 0.00001 
+        max: 0.1
+
+      weight_decay: #SGD, Adam, AdamW, RMSprop
+        distribution: uniform
+        min: 0.0
+        max: 1.0
+
+      momentum: #SGD, RMSprop
+        distribution: uniform
+        min: 0.0 
+        max: 1.0
+  
+  scheduler:
+    parameters:
+      name:
+        values: [None, "ExponentialLR", "StepLR", "ReduceLROnPlateau"]
+        distribution: categorical
+  
+      gamma: #ExpLr, StepLr
+        values: [0.01, 0.1, 0.33, 0.5, 0.7, 1.0]
+
+      step_size: #StepLR
+        values: [2, 4, 6]
+  
+      patience:
+        value: 2
+
+early_terminate:
+  type: hyperband
+  min_iter: 3
+  eta: 2
