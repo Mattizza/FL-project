@@ -276,7 +276,10 @@ class Client:
 
             #if there is a scheduler do a step at each epoch
             if self.scheduler != None:
-                self.scheduler.step(avg_loss)
+                if isinstance(self.scheduler, lr_scheduler.ReduceLROnPlateau):
+                    self.scheduler.step(avg_loss)
+                else:
+                    self.scheduler.step()
                 
             # wandb
             if self.args.wandb != None and self.args.framework == 'centralized':

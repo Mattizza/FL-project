@@ -373,7 +373,7 @@ def sweeping(args):
         sweep_id = args.sweep_id
 
     train_func = lambda: sweep_train(args=args)
-    wandb.agent(sweep_id = sweep_id, function = train_func, count = 10, project = project_name)
+    wandb.agent(sweep_id = sweep_id, function = train_func, count = 3, project = project_name)
 
 
 def sweep_train(args, config = None):
