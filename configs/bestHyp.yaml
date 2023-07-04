@@ -1,0 +1,6 @@
+optimizer:
+  name: AdamW
+  lr: 0.0005
+scheduler:
+  name: ReduceLROnPlateau
+  patience: 2

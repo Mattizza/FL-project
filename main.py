@@ -260,18 +260,21 @@ def get_sweep_transforms2(args, config):
     # TODO: test your data augmentation by changing the transforms here!
     if args.model == 'deeplabv3_mobilenetv2':
         rnd_transforms = []
+        configColorJitter = config.get('colorJitter')
+        configRndRot = config.get("rndRot")
+        if configColorJitter.get("active"):
+            rnd_transforms.append(sstr.ColorJitter(brightness=configColorJitter.get("brightness"),
+                                                   contrast=configColorJitter.get("contrast"),
+                                                   saturation=configColorJitter.get("saturation"),
+                                                   hue=configColorJitter.get("hue")))
         
-        if config.colorJitter.active:
-            rnd_transforms.append(sstr.ColorJitter(brightness=config.colorJitter.brightness,
-                                                   contrast=config.colorJitter.contrast,
-                                                   saturation=config.colorJitter.saturation,
-                                                   hue=config.colorJitter.hue))
-        if config.rndHzFlip.active:
+        if config.get("rndHzFlip"):
             rnd_transforms.append(sstr.RandomHorizontalFlip())
-        if config.rndVertFlip.active:
+        if config.get("rndVertFlip"):
             rnd_transforms.append(sstr.RandomVerticalFlip())
-        if config.rndRot.active:
-            rnd_transforms.append(sstr.RandomRotation(config.rndRot.maxDeg))
+        
+        if configRndRot.get("active"):
+            rnd_transforms.append(sstr.RandomRotation(configRndRot.get("maxDeg")))
 
         base_train_transforms = [
             sstr.RandomResizedCrop((512, 928), scale=(0.5, 2.0)),
@@ -302,16 +305,14 @@ def yaml_to_dict(path):
 def sweeping(args):
     wandb.login()
 
-    """dict_sweep = {'method' : 'grid'}
-    metric = {
-        'name' : 'loss',
-        'goal' : 'minimize'
-    }
-    dict_sweep['metric'] = metric
-    """
     if args.wandb ==  'hypTuning':
         with open('configs/hypTuning2Step1.yaml', 'r') as f:
                 dict_sweep = yaml.safe_load(f)
+    
+    elif args.wandb == 'transformTuning':
+        with open('configs/colorJitterTuning.yaml', 'r') as f:
+                dict_sweep = yaml.safe_load(f)
+
 
     project_name = "29_06_testTask1"
     if args.sweep_id == None:
@@ -335,11 +336,13 @@ def sweep_train(args, config = None):
 
         if args.wandb == 'transformTuning':
             train_transforms, test_transforms = get_sweep_transforms2(args, config)
+            print(train_transforms)
+            print(test_transforms)
             train_datasets, test_train_datasets, test_datasets = get_datasets(args=args, train_transforms = train_transforms , test_transforms = test_transforms)
             train_clients, test_clients = gen_clients(args, train_datasets, test_train_datasets, test_datasets, model)
             metrics = set_metrics(args)
             server = Server(args, train_clients, test_clients, model, metrics)
-            path = 'configs/runSingola.yaml'
+            path = 'configs/bestHyp.yaml'
             configHyp = yaml_to_dict(path)
             server.distribute_config_dict(configHyp)
 

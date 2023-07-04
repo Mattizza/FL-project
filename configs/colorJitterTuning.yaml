@@ -11,16 +11,13 @@ parameters:
       active:
         value: False
       maxDeg:
-        values: []
+        value: 10
   
   rndHzFlip:
-    parameters:
-      active:
-        value: False
+    value: False
 
   rndVertFlip:
-    parameters:
-      value: False
+    value: False
 
   colorJitter:
     parameters:
