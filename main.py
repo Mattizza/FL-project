@@ -260,25 +260,32 @@ def get_sweep_transforms2(args, config):
     # TODO: test your data augmentation by changing the transforms here!
     if args.model == 'deeplabv3_mobilenetv2':
         rnd_transforms = []
-
-        if config.rndRot:
-            rnd_transforms.append(sstr.RandomRotation(10))
-        if config.rndHzFlip:
+        
+        if config.colorJitter.active:
+            rnd_transforms.append(sstr.ColorJitter(brightness=config.colorJitter.brightness,
+                                                   contrast=config.colorJitter.contrast,
+                                                   saturation=config.colorJitter.saturation,
+                                                   hue=config.colorJitter.hue))
+        if config.rndHzFlip.active:
             rnd_transforms.append(sstr.RandomHorizontalFlip())
-        if config.rndVertFlip:
+        if config.rndVertFlip.active:
             rnd_transforms.append(sstr.RandomVerticalFlip())
-        if config.colorJitter:
-            rnd_transforms.append(sstr.ColorJitter())
+        if config.rndRot.active:
+            rnd_transforms.append(sstr.RandomRotation(config.rndRot.maxDeg))
 
-
-        base_transforms = [
+        base_train_transforms = [
             sstr.RandomResizedCrop((512, 928), scale=(0.5, 2.0)),
             sstr.ToTensor(),
             sstr.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
             ]
         
-        train_transforms = sstr.Compose(rnd_transforms + base_transforms)
-        test_transforms = sstr.Compose(base_transforms)
+        test_transforms = [
+            sstr.ToTensor(),
+            sstr.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+            ]
+        
+        train_transforms = sstr.Compose(rnd_transforms + base_train_transforms)
+        test_transforms = sstr.Compose(test_transforms)
 
     else:
         raise NotImplementedError
@@ -303,67 +310,8 @@ def sweeping(args):
     dict_sweep['metric'] = metric
     """
     if args.wandb ==  'hypTuning':
-        with open('configs/hypTuningStep1_29_06.yaml', 'r') as f:
+        with open('configs/hypTuning2Step1.yaml', 'r') as f:
                 dict_sweep = yaml.safe_load(f)
-
-        """parameters = { 
-            'optimizer' : { 'values' : ['Adam', 'SGD', 'Adagrad'],
-                           'distribution' : 'categorical'},
-            'learning_rate' : {'values': [0.01, 0.001, 0.0001, 0.0005, 0.00001]},
-            
-            'weight_decay': {'distribution': 'uniform',
-                                'min': 0.0,
-                                'max': 1.0},
-            'momentum' : {'distribution': 'uniform',
-                                'min': 0.0,
-                                'max': 1.0},
-            'scheduler' : {'values' : ['ExponentialLR', 'StepLR', None],
-                           'distribution' : 'categorical'
-                           },
-
-            'gamma' : {'values':[0.01, 0.1, 0.33, 0.5, 0.7, 1.0]}
-            
-        }
-
-        #parameters = { 
-        #    'optimizer' : { 'value' : 'Adam'},
-        #
-        #    'learning_rate' : {'values': [0.0005, 0.00045],
-        #                       'distribution': 'categorical'}
-        #}
-
-        # First we define our configuration
-        parameters = {        
-                'optimizer': {
-                    'parameters': {
-                                'name': {'values': ['Adam', 'SGD']},
-                                'lr'      : {'value': 0.0005}#,
-                                #'momentum': {'max': 1, 'min': 0}
-                                    }
-                            },
-
-                'scheduler': {
-                    'parameters':{
-                                'name'  : {'value': 'ReduceLROnPlateau'},
-                                'patience': {'value': 2}
-                                #'gamma' : {'max': 1, 'min': 0.1},
-                                #'factor': {'max': 1, 'min': 0.1}
-                                }
-                            }
-                        }
-        
-        dict_sweep['parameters'] = parameters
-
-        dict_sweep['early_terminate'] = {'type' : 'hyperband', 'min_iter' : 3, 'eta': 2}
-    
-    elif args.wandb == 'transformTuning':
-        parameters = {  'rndRot' : {'values':[True, False]},
-                        'rndHzFlip' : {'values':[True, False]},
-                        'rndVertFlip' : {'values':[True, False]},
-                        'colorJitter' : {'values':[True, False]},
-                                   }
-        dict_sweep['parameters'] = parameters
-    """    
 
     project_name = "29_06_testTask1"
     if args.sweep_id == None:
@@ -373,7 +321,7 @@ def sweeping(args):
         sweep_id = args.sweep_id
 
     train_func = lambda: sweep_train(args=args)
-    wandb.agent(sweep_id = sweep_id, function = train_func, count = 3, project = project_name)
+    wandb.agent(sweep_id = sweep_id, function = train_func, count = 10, project = project_name)
 
 
 def sweep_train(args, config = None):
@@ -464,8 +412,9 @@ def main():
     'optimizer':{'name': 'Adam',
                 'lr':0.005,
                 'weight_decay': 0.5},
-    'scheduler':{'name': 'ExponentialLR',
-                 'gamma':0.005}
+    'scheduler':{'name': 'StepLR',
+                 'step_size' : 1,
+                 'gamma':0.1}
                  }
         server.distribute_config_dict(config)
         

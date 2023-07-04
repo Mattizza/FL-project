@@ -278,8 +278,10 @@ class Client:
             if self.scheduler != None:
                 if isinstance(self.scheduler, lr_scheduler.ReduceLROnPlateau):
                     self.scheduler.step(avg_loss)
+                    print("Reduce On Plateau Scheduler, lr:", self.optimizer.param_groups[0]['lr'])
                 else:
                     self.scheduler.step()
+                    print("Altro Scheduler, lr:", self.optimizer.param_groups[0]['lr'])
                 
             # wandb
             if self.args.wandb != None and self.args.framework == 'centralized':
