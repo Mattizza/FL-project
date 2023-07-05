@@ -274,7 +274,7 @@ def get_sweep_transforms2(args, config):
             rnd_transforms.append(sstr.RandomVerticalFlip())
         
         if configRndRot.get("active"):
-            rnd_transforms.append(sstr.RandomRotation(configRndRot.get("maxDeg")))
+            rnd_transforms.append(sstr.RandomRotation(configRndRot.get("maxDeg"), expand=False))
 
         base_train_transforms = [
             sstr.RandomResizedCrop((512, 928), scale=(0.5, 2.0)),
@@ -310,7 +310,7 @@ def sweeping(args):
                 dict_sweep = yaml.safe_load(f)
     
     elif args.wandb == 'transformTuning':
-        with open('configs/colorJitterTuning3.yaml', 'r') as f:
+        with open('configs/rndRotTuning.yaml', 'r') as f:
                 dict_sweep = yaml.safe_load(f)
 
 
