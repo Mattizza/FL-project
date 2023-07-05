@@ -310,7 +310,7 @@ def sweeping(args):
                 dict_sweep = yaml.safe_load(f)
     
     elif args.wandb == 'transformTuning':
-        with open('configs/colorJitterTuning2.yaml', 'r') as f:
+        with open('configs/colorJitterTuning3.yaml', 'r') as f:
                 dict_sweep = yaml.safe_load(f)
 
 
