@@ -11,7 +11,7 @@ parameters:
       active:
         value: True
       maxDeg:
-        values: [0, 2, 4, 6, 10, 20]
+        values: [0, 6]
   
   rndHzFlip:
     value: False

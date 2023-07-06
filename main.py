@@ -310,7 +310,7 @@ def sweeping(args):
                 dict_sweep = yaml.safe_load(f)
     
     elif args.wandb == 'transformTuning':
-        with open('configs/rndRotTuning.yaml', 'r') as f:
+        with open('configs/globalTransformTuning.yaml', 'r') as f:
                 dict_sweep = yaml.safe_load(f)
 
 

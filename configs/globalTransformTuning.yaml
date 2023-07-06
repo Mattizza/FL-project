@@ -11,13 +11,13 @@ parameters:
       active:
         values: [True, False]
       maxDeg:
-        value: 10
+        value: 6
   
   rndHzFlip:
     values: [True, False]
 
   rndVertFlip:
-    value: [True, False]
+    values: [True, False]
 
   colorJitter:
     parameters:
@@ -25,13 +25,13 @@ parameters:
         values: [True, False]
 
       brightness:
-        value: 
+        value: 0
 
       contrast:
-        value: 
+        value: 0
       
       saturation:
-        value: 
+        value: 0 
       
       hue:
-        value: 
+        value: 0.1
