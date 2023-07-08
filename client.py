@@ -129,7 +129,8 @@ class Client:
         valid_params_dict = {key: opt_config[key] for key in valid_params_k}
         
         self.optimizer = opt_method(self.model.parameters(), **valid_params_dict)
-        print(self.optimizer)
+        if self.args.framework == 'centralized':
+            print(self.optimizer)
     
     def new_set_opt(self, config):
         if config.get('optimizer') =='Adam':
@@ -155,9 +156,12 @@ class Client:
             valid_params_k = sch_signature.intersection(set(sch_config))
             valid_params_dict = {key: sch_config[key] for key in valid_params_k}
             self.scheduler = sch_method(self.optimizer, **valid_params_dict)
-            print('Scheduler:\n',type(self.scheduler),"\n", self.scheduler.state_dict())
-        else:
-            print("No scheduler")
+        
+        if self.args.framework == 'centralized':
+            if sch_name != 'None':
+                print('Scheduler:\n',type(self.scheduler),"\n", self.scheduler.state_dict())
+            else:
+                print("No scheduler")
     
     def new_set_scheduler(self, config):
         if config.get('scheduler') == 'ConstantLR':

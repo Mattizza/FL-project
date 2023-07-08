@@ -310,7 +310,7 @@ def sweeping(args):
                 dict_sweep = yaml.safe_load(f)
     
     elif args.wandb == 'transformTuning':
-        with open('configs/globalTransformTuning.yaml', 'r') as f:
+        with open('configs/globalTransformTuning2.yaml', 'r') as f:
                 dict_sweep = yaml.safe_load(f)
 
 
@@ -342,7 +342,7 @@ def sweep_train(args, config = None):
             train_clients, test_clients = gen_clients(args, train_datasets, test_train_datasets, test_datasets, model)
             metrics = set_metrics(args)
             server = Server(args, train_clients, test_clients, model, metrics)
-            path = 'configs/bestHyp.yaml'
+            path = 'configs/bestHypSameDom.yaml'
             configHyp = yaml_to_dict(path)
             server.distribute_config_dict(configHyp)
 
@@ -370,11 +370,11 @@ def main():
     elif args.wandb == 'singleRun':
         wandb.login()
 
-        with open('configs/newRunSingola.yaml', 'r') as f:
+        with open('configs/bestHypSameDom.yaml', 'r') as f:
             yaml_config = yaml.safe_load(f)
 
         wandb.init(
-            project = 'singleRuns',
+            project = 'Task2',
             config = yaml_config)
         
         config = wandb.config

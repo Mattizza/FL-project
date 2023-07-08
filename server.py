@@ -115,6 +115,11 @@ class Server:
             print(f"Checkpoint {self.args.checkpoint_to_load} loaded")
 
 
+        if self.args.framework == 'federated':
+            wandb.log({"Num. clients per round": self.args.clients_per_round})
+            wandb.log({"Num. local epochs": self.args.clients_per_round})
+            wandb.log({"Num. rounds": self.args.clients_per_round})
+
         round_min_loss = float('inf')
         
         for round in range(self.args.num_rounds):
