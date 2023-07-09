@@ -116,9 +116,9 @@ class Server:
 
 
         if self.args.framework == 'federated':
-            wandb.log({"Num. clients per round": self.args.clients_per_round})
-            wandb.log({"Num. local epochs": self.args.clients_per_round})
-            wandb.log({"Num. rounds": self.args.clients_per_round})
+            wandb.log({"Num. clients per round": self.args.clients_per_round}, commit = False)
+            wandb.log({"Num. local epochs": self.args.num_epochs}, commit = False)
+            wandb.log({"Num. rounds": self.args.num_rounds}, commit = False)
 
         round_min_loss = float('inf')
         

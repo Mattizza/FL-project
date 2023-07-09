@@ -18,8 +18,9 @@ from datasets.idda import IDDADataset
 from datasets.gta5 import GTA5
 from models.deeplabv3 import deeplabv3_mobilenetv2
 from utils.stream_metrics import StreamSegMetrics, StreamClsMetrics
-import yaml
 
+import sys
+import yaml
 import wandb
 
 
@@ -156,7 +157,7 @@ def get_datasets(args, train_transforms = None, test_transforms = None):
             test_datasets.append(Femnist(data, test_transforms, user))
 
     elif args.dataset == 'gta5':
-        train_datasets.append(GTA5(transform=train_transforms, test_transform=test_transforms, client_name = 'train_gta5',target_dataset='idda'))
+        train_datasets.append(GTA5(transform=train_transforms, test_transform=test_transforms, client_name = 'train_gta5', target_dataset='idda'))
         
         idda_root = 'data/idda'
         with open(os.path.join(idda_root, 'train.txt'), 'r') as f:
@@ -306,18 +307,17 @@ def sweeping(args):
     wandb.login()
 
     if args.wandb ==  'hypTuning':
-        with open('configs/hypTuning2Step1.yaml', 'r') as f:
+        with open('configs/' + args.sweep_config, 'r') as f:
                 dict_sweep = yaml.safe_load(f)
     
     elif args.wandb == 'transformTuning':
-        with open('configs/globalTransformTuning2.yaml', 'r') as f:
+        with open('configs/' + args.sweep_config, 'r') as f:
                 dict_sweep = yaml.safe_load(f)
 
 
-    project_name = "29_06_testTask1"
+    project_name = args.wb_project_name
     if args.sweep_id == None:
         sweep_id = wandb.sweep(dict_sweep, project = project_name)
-
     else:
         sweep_id = args.sweep_id
 
@@ -342,7 +342,7 @@ def sweep_train(args, config = None):
             train_clients, test_clients = gen_clients(args, train_datasets, test_train_datasets, test_datasets, model)
             metrics = set_metrics(args)
             server = Server(args, train_clients, test_clients, model, metrics)
-            path = 'configs/bestHypSameDom.yaml'
+            path = 'configs/' + args.config
             configHyp = yaml_to_dict(path)
             server.distribute_config_dict(configHyp)
 
@@ -365,20 +365,23 @@ def main():
     set_seed(args.seed)
 
     if args.wandb == 'hypTuning' or args.wandb == 'transformTuning':
+        if args.sweep_config == None:
+            sys.exit('An error occurred: you must specify a sweep_config file in the args!')
+
         sweeping(args)
     
-    elif args.wandb == 'singleRun':
-        wandb.login()
-
-        with open('configs/bestHypSameDom.yaml', 'r') as f:
-            yaml_config = yaml.safe_load(f)
-
-        wandb.init(
-            project = 'Task2',
-            config = yaml_config)
+    else:
+        #get the configuration from command line
+        with open('configs/' + args.config, 'r') as f:
+            config = yaml.safe_load(f)
         
-        config = wandb.config
-
+        if args.wandb == 'singleRun':
+            wandb.login()
+            wandb.init(
+                project = args.wb_project_name,
+                config = config)
+            config = wandb.config
+        
         print(f'Initializing model...')
         model = model_init(args)
         model.cuda()
@@ -395,36 +398,6 @@ def main():
         server.train()
         server.eval_train()
         server.test()
-        
-
-    elif args.wandb == None:
-        print(f'Initializing model...')
-        model = model_init(args)
-        model.cuda()
-        print('Done.')
-        print('Generate datasets...')
-        train_datasets, test_train_datasets, test_datasets = get_datasets(args)
-        print('Done.')
-
-        metrics = set_metrics(args)
-        train_clients, test_clients = gen_clients(args, train_datasets, test_train_datasets,test_datasets, model)
-        server = Server(args, train_clients, test_clients, model, metrics)
-        path = 'configs/runSingola.yaml'
-        config = yaml_to_dict(path)
-        config =  {
-    'optimizer':{'name': 'Adam',
-                'lr':0.005,
-                'weight_decay': 0.5},
-    'scheduler':{'name': 'StepLR',
-                 'step_size' : 1,
-                 'gamma':0.1}
-                 }
-        server.distribute_config_dict(config)
-        
-        server.train()
-        server.eval_train()
-        server.test()
-
 
 if __name__ == '__main__':
     main()
