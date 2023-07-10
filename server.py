@@ -115,7 +115,7 @@ class Server:
             print(f"Checkpoint {self.args.checkpoint_to_load} loaded")
 
 
-        if self.args.framework == 'federated':
+        if self.args.framework == 'federated' and self.args.wandb != None:
             wandb.log({"Num. clients per round": self.args.clients_per_round}, commit = False)
             wandb.log({"Num. local epochs": self.args.num_epochs}, commit = False)
             wandb.log({"Num. rounds": self.args.num_rounds}, commit = False)
