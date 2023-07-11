@@ -16,6 +16,7 @@ from server import Server
 from utils.args import get_parser
 from datasets.idda import IDDADataset
 from datasets.gta5 import GTA5
+from serverGTA import ServerGTA
 from models.deeplabv3 import deeplabv3_mobilenetv2
 from utils.stream_metrics import StreamSegMetrics, StreamClsMetrics
 
@@ -196,7 +197,6 @@ def set_metrics(args):
         }
     elif args.model == 'deeplabv3_mobilenetv2' and args.dataset == 'gta5':
         metrics = {
-            'eval_train': StreamSegMetrics(num_classes, 'eval_train'),
             'idda_test' : StreamSegMetrics(num_classes, 'idda_test'),
             'test_same_dom': StreamSegMetrics(num_classes, 'test_same_dom'),
             'test_diff_dom': StreamSegMetrics(num_classes, 'test_diff_dom')
@@ -229,6 +229,14 @@ def gen_clients(args, train_datasets, test_train_datasets, test_datasets, model)
     """
 
     return clients[0], clients[1]
+
+
+def gen_clients_dom_adapt(args,test_datasets, model):
+    clients = []
+
+    for test_dataset in test_datasets:
+        clients.append(Client(args, train_dataset=None, test_dataset = test_dataset, model = model, test_client=True))
+    return clients
 
 def get_sweep_transforms(args, config):
     # TODO: test your data augmentation by changing the transforms here!
@@ -391,13 +399,19 @@ def main():
         print('Done.')
 
         metrics = set_metrics(args)
-        train_clients, test_clients = gen_clients(args, train_datasets, test_train_datasets, test_datasets, model)
-        server = Server(args, train_clients, test_clients, model, metrics)
         
-        server.distribute_config_dict(config)
-        server.train()
-        server.eval_train()
-        server.test()
+        if args.dataset == 'gta5':
+            test_clients = gen_clients_dom_adapt(args, test_datasets, model)
+            server = ServerGTA(args, source_dataset=train_datasets[0], test_clients=test_clients, model=model, metrics=metrics)
+            server.create_opt_sch(config=config)
+            server.train()  
+        else:
+            train_clients, test_clients = gen_clients(args, train_datasets, test_train_datasets, test_datasets, model)
+            server = Server(args, train_clients, test_clients, model, metrics)
+            server.distribute_config_dict(config)
+            server.train()
+            server.eval_train()
+            server.test()
 
 if __name__ == '__main__':
     main()
