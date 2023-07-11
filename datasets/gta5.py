@@ -78,6 +78,11 @@ class GTA5(VisionDataset):
     
     def __len__(self):
         return len(self.list_samples)
+    
+    def add_fda():
+        #TODO: aggiungi davanti a tutte  le transforms il cambio di stile
+        self.transform.insert(0, fda)
+
 
 
 

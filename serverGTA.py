@@ -13,15 +13,17 @@ from torch.optim import lr_scheduler
 import os
 
 class ServerGTA:
-    def __init__(self, args, test_clients, model, metrics, source_dataset):
+    def __init__(self, args, source_dataset, test_clients, model, metrics):
         self.args = args
+
         self.source_dataset = source_dataset
-        self.test_clients = test_clients #lista con due elementi (istanza della classe client (test_client = True))
-        self.model = model #da passare poi al client
+        self.test_clients = test_clients #lista con tre elementi (idda_test, idda_same_dom, idda_diff_dom)
+
+        self.model = model
         self.metrics = metrics
-        self.model_params_dict = copy.deepcopy(self.model.state_dict())
+        self.model_params_dict = copy.deepcopy(self.model.state_dict()) #da eliminare
         #per setting centralized
-        self.params = None
+        self.params = None #da eliminare
         self.train_loader = DataLoader(self.source_dataset, batch_size=self.args.bs, shuffle=True, drop_last=True)
         self.mious = {'idda_test':[], "test_same_dom":[], "test_diff_dom":[]}
 
@@ -31,16 +33,9 @@ class ServerGTA:
 
         self.optimizer = None
         self.scheduler = None
-        
-    
-    def distribute_config_dict(self, config: dict):
-        """
-            This method iterates over each train client and creates in each of them and optimizer and
-            a scheduler according to the configuration contained in config 
-        """
-        for c in self.train_clients:
-            c.create_opt_sch(config)
 
+        self.t = 2 #how many epochs between the evaluations
+        
     def _get_outputs(self, images):
         
         if self.args.model == 'deeplabv3_mobilenetv2':
@@ -90,7 +85,8 @@ class ServerGTA:
             Simply call the method to create the optimizer and the scheduler
         """
         #il file config che riceve deve essere un dizionario con chiavi esterne "optimizer" e "scheduler"
-        #nel se usi config = wand.config viene automaticamente fatto in questo modo 
+        #se usi config = wand.config viene automaticamente fatto in questo modo
+
         self.set_optimizer(config)
         self.set_scheduler(config)    
 
@@ -100,18 +96,13 @@ class ServerGTA:
         '''
         This method locally trains the model with the dataset of the client. It handles the training at mini-batch level.
             -) cur_epoch: current epoch of training;
-            -) optimizer: optimizer used for the local training.
         '''
         cumu_loss = 0
         print('Epoch', cur_epoch + 1)
         for cur_step, (images, labels) in enumerate(self.train_loader):
-                
-            # Total steps needed to complete an epoch. Computed as:
-            # 
-            #           self.n_total_steps = floor(len(self.dataset) / self.args.bs).
-            # 
-            # Example: len(self.dataset) = 600, self.args.bs = 16, self.n_total_steps = 37
-            self.n_total_steps = len(self.train_loader)
+            
+            
+            
 
             images = images.to(self.device, dtype = torch.float32) 
             labels = labels.to(self.device, dtype = torch.long)
@@ -122,15 +113,19 @@ class ServerGTA:
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
+
+            # === Wandb ===
             if self.args.wandb != None and self.args.framework == 'centralized':
                 wandb.log({"batch loss": loss.item()})
 
+            # === Printing === 
             # We keep track of the loss. Notice we are storing the loss for
             # each mini-batch.
             #wandb.log({"loss": loss.mean()})
             
             # We are considering 10 batch at a time. TO DO: define a way to handle different values.
             # We are considering n_steps batch at a time.
+            self.n_total_steps = len(self.train_loader)
             if (cur_step + 1) % n_steps == 0 or cur_step + 1 == self.n_total_steps:
 
                 # We store the information about the steps using self.count. This is needed if we want to plot the learning curve.
@@ -149,7 +144,7 @@ class ServerGTA:
                 self.n_10th_steps.append(self.count)
                 print(f'epoch {cur_epoch + 1} / {self.args.num_epochs}, step {cur_step + 1} / {self.n_total_steps}, loss = {loss.mean():.3f}')
         
-        return cumu_loss /len(self.train_loader)
+        return cumu_loss / len(self.train_loader)
 
 
     def train_round(self):
@@ -213,15 +208,14 @@ class ServerGTA:
         for epoch in range(self.args.num_epochs):
             
             # wandb
-            if self.args.wandb != None and self.args.framework == 'centralized':
+            if self.args.wandb != None:
                     wandb.log({"lr": self.optimizer.param_groups[0]['lr']})
 
             avg_loss = self.run_epoch(epoch, n_steps)
             
             # ==== Saving the model if in centralized framework ====
-            
             #compare current epoch avg_loss with the overall min_loss
-            if avg_loss < min_loss and self.args.framework == 'centralized' and self.args.name_checkpoint_to_save != None:
+            if avg_loss < min_loss and self.args.name_checkpoint_to_save != None:
                 min_loss = avg_loss
                 self.save_model_opt_sch(epoch)
 
@@ -235,15 +229,19 @@ class ServerGTA:
                     print("Altro Scheduler, lr:", self.optimizer.param_groups[0]['lr'])
                 
             # wandb
-            if self.args.wandb != None and self.args.framework == 'centralized':
+            if self.args.wandb != None:
                 wandb.log({"loss": avg_loss, "epoch": epoch})
-            
+            actual_epoch_executed = epoch +1
+
+            if actual_epoch_executed % self.t == 0 or actual_epoch_executed == (self.args.num_epochs):
+                self.eval_train()
+                self.model.train()
+
             # Here we are simply computing how many steps do we need to complete an epoch.
             self.n_epoch_steps.append(self.n_epoch_steps[0] * (epoch + 1))
-
-        update = self.generate_update()
         
-        return num_train_samples, update, avg_loss
+        avg_loss_last_epoch = avg_loss
+        return avg_loss_last_epoch
     
     def save_model_opt_sch(self, rounds = None):
         
@@ -299,6 +297,8 @@ class ServerGTA:
         client.test(metric)
 
         miou = metric.get_results()['Mean IoU']
+        
+        # wandb
         if self.args.wandb != None:
             wandb.log({'idda_train_miou':miou})
 
@@ -314,7 +314,7 @@ class ServerGTA:
         Load the server model on each test client, reset the previously computed
         metrics, test the model on the test client's dataset
         """
-        for client in self.test_clients:
+        for client in self.test_clients[1:]: #skip the first client since already tested
             print(f"Testing client {client.name}...")
             self.load_server_model_on_client(client)
             metric = self.metrics[client.name]
@@ -328,7 +328,8 @@ class ServerGTA:
 
 
     def load_server_model_on_client(self, client):
-        client.model.load_state_dict(self.model_params_dict)
+        client.model = self.model #<- con questa passi proprio il modello
+        #client.model.load_state_dict(copy.deepcopy(self.model.state_dict())) #<- con questa passi i parametri del modello
 
 
     

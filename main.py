@@ -231,39 +231,17 @@ def gen_clients(args, train_datasets, test_train_datasets, test_datasets, model)
     return clients[0], clients[1]
 
 
-def gen_clients_dom_adapt(args,test_datasets, model):
+def gen_clients_dom_adapt(args, test_datasets, model):
     clients = []
-
+    
+    #Creates 3 test clients: idda_test(file train.txt), idda_same_dom, idda_diff_dom
     for test_dataset in test_datasets:
         clients.append(Client(args, train_dataset=None, test_dataset = test_dataset, model = model, test_client=True))
-    return clients
-
-def get_sweep_transforms(args, config):
-    # TODO: test your data augmentation by changing the transforms here!
-    if args.model == 'deeplabv3_mobilenetv2':
-        rnd_transforms = []
-
-        # Select only the transforms of interest. We take the string and we build the method.
-        # WARNING: omitted '(10)' as argument like in the previous version.
-        # WARNING: not tested due to problems with WandB API.
-        keep = [value for key, value in config.transforms.items() if value is not np.nan] 
-        
-        for i in range(len(keep)):
-            rnd_transforms.append(getattr(sstr, keep[i])) 
-
-        base_transforms = [
-            sstr.RandomResizedCrop((512, 928), scale=(0.5, 2.0)),
-            sstr.ToTensor(),
-            sstr.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-            ]
-        
-        train_transforms = sstr.Compose(rnd_transforms + base_transforms)
-        test_transforms = sstr.Compose(base_transforms)
-
-    else:
-        raise NotImplementedError
     
-    return train_transforms, test_transforms
+    #Creates the various clients, each one having a partition of the idda dataset
+    #for idda_client_dataset in idda_clients_datasets:
+
+    return clients
 
 def get_sweep_transforms2(args, config):
     # TODO: test your data augmentation by changing the transforms here!
@@ -404,7 +382,9 @@ def main():
             test_clients = gen_clients_dom_adapt(args, test_datasets, model)
             server = ServerGTA(args, source_dataset=train_datasets[0], test_clients=test_clients, model=model, metrics=metrics)
             server.create_opt_sch(config=config)
-            server.train()  
+            server.train()
+            server.test()
+
         else:
             train_clients, test_clients = gen_clients(args, train_datasets, test_train_datasets, test_datasets, model)
             server = Server(args, train_clients, test_clients, model, metrics)
