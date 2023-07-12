@@ -34,7 +34,9 @@ class ServerGTA:
         self.optimizer = None
         self.scheduler = None
 
-        self.t = 2 #how many epochs between the evaluations
+        self.t = 1 #how many epochs between the evaluations
+        self.max_eval_miou = 0.0
+        self.actual_epochs_to_max_eval_miou = 0
         
     def _get_outputs(self, images):
         
@@ -100,10 +102,7 @@ class ServerGTA:
         cumu_loss = 0
         print('Epoch', cur_epoch + 1)
         for cur_step, (images, labels) in enumerate(self.train_loader):
-            
-            
-            
-
+   
             images = images.to(self.device, dtype = torch.float32) 
             labels = labels.to(self.device, dtype = torch.long)
             outputs = self._get_outputs(images)
@@ -146,40 +145,6 @@ class ServerGTA:
         
         return cumu_loss / len(self.train_loader)
 
-
-    def train_round(self):
-        """
-            This method trains the model with the dataset of the clients. It handles the training at single round level
-            :param clients: list of all the clients to train
-            :return: model updates gathered from the clients, to be aggregated
-        """
-        """
-        Fa il train sul trainClient (train.txt)
-        """
-        client = self.train_clients[0]
-        _, _, avg_loss= client.train()
-        
-        if self.args.wandb != None:
-                wandb.log({"round loss": avg_loss})
-
-        return avg_loss
-
-    def train1(self):
-        if self.args.checkpoint_to_load != None:
-                    self.load_model_opt_sch()
-                    print(f"Checkpoint {self.args.checkpoint_to_load} loaded")
-
-        client = self.train_clients[0]
-
-        for round in range(self.args.num_rounds):
-            _, _, avg_loss= client.train()
-            self.eval_train()
-
-        # ==== Saving the checkpoint if in federated framework ====
-        # if avg_loss < round_min_loss and self.args.framework == 'federated' and self.args.name_checkpoint_to_save != None:
-        #     round_min_loss = round_avg_loss
-        #     self.save_model_opt_sch(round+1)
-
     def train(self, n_steps=10):
         '''
         This method locally trains the model with the dataset of the client. It handles the training at epochs level
@@ -200,9 +165,6 @@ class ServerGTA:
 
        
         num_train_samples = len(self.source_dataset)
-        
-        #initialize with highest possible number to keep track of the lowest loss
-        min_loss = float("inf") 
 
         # We iterate over the epochs.
         for epoch in range(self.args.num_epochs):
@@ -212,12 +174,6 @@ class ServerGTA:
                     wandb.log({"lr": self.optimizer.param_groups[0]['lr']})
 
             avg_loss = self.run_epoch(epoch, n_steps)
-            
-            # ==== Saving the model if in centralized framework ====
-            #compare current epoch avg_loss with the overall min_loss
-            if avg_loss < min_loss and self.args.name_checkpoint_to_save != None:
-                min_loss = avg_loss
-                self.save_model_opt_sch(epoch)
 
             #if there is a scheduler do a step at each epoch
             if self.scheduler != None:
@@ -231,11 +187,20 @@ class ServerGTA:
             # wandb
             if self.args.wandb != None:
                 wandb.log({"loss": avg_loss, "epoch": epoch})
-            actual_epoch_executed = epoch +1
+            actual_epochs_executed = epoch +1
 
-            if actual_epoch_executed % self.t == 0 or actual_epoch_executed == (self.args.num_epochs):
-                self.eval_train()
+            #Check the miou on idda_train every t epochs
+            if actual_epochs_executed % self.t == 0 or actual_epochs_executed == (self.args.num_epochs):
+                eval_miou = self.eval_train()
                 self.model.train()
+
+                # ==== Saving the model ====
+                #compare current eval_miou with the max_eval_miou
+                if eval_miou > self.max_eval_miou and self.args.name_checkpoint_to_save != None:
+                    self.max_eval_miou = eval_miou
+                    self.save_checkpoint(eval_miou, actual_epochs_executed)
+
+
 
             # Here we are simply computing how many steps do we need to complete an epoch.
             self.n_epoch_steps.append(self.n_epoch_steps[0] * (epoch + 1))
@@ -243,41 +208,33 @@ class ServerGTA:
         avg_loss_last_epoch = avg_loss
         return avg_loss_last_epoch
     
-    def save_model_opt_sch(self, rounds = None):
+    def save_checkpoint(self, eval_miou, actual_epochs_executed):
         
-        state = {"model_state": self.model.state_dict()}
+        print(f"=> Saving checkpoint. Target_eval_miou: {eval_miou:.2%}\n")
 
-        #! magari in seguito aggiungi anche lo stato dell'optimizer e dello scheduler
-        #"optimizer_state": self.optimizer.state_dict(),
-        #"scheduler_state": self.scheduler.state_dict()}
+        checkpoint = {"model_state": self.model.state_dict(),
+                    "optimizer_state": self.optimizer.state_dict(),
+                    "scheduler_state": self.scheduler.state_dict(),
+                    "target_eval_miou": eval_miou,
+                    "actual_epochs_executed": actual_epochs_executed}
 
-        #if self.args.framework == 'federated' or self.args.dataset == 'idda': #idda da rimuovere, lasciare solo centralized
-        #    state['round': rounds]
-
-        #elif self.args.framework == 'centralized' or self.args.dataset == 'iddaCB' or self.args.dataset == 'gta5' :
-        #    state["epoch": epochs]
-
-        state['round'] = rounds
-        #! creare una funzione per definire nomi dei path personalizzati in base a optimizer, numero epoche etc
-        
-        #customPath = definePath(self.args)
-        root = 'savedModels'
+        root = 'checkpoints'
         customPath = self.args.name_checkpoint_to_save
         path = os.path.join(root, customPath)
-        torch.save(state, path)
+        torch.save(checkpoint, path)
         
         print('Server saved checkpoint at ', path)
         
     
     def load_model_opt_sch(self):
-        root = "savedModels"
+        root = 'checkpoints'
         path = os.path.join(root, self.args.checkpoint_to_load)
-        state = torch.load(path)
-        if self.args.framework == 'federated':
-            print(f"\n=> Loading the model trained for {state['round']} rounds")
-        elif self.args.framework == 'centralized':
-            print(f"\n=> Loading the model trained for {state['epoch']} epochs")
-        self.model.load_state_dict(state['model_state'])
+        checkpoint = torch.load(path)
+        print(f"\n=> Loading the trained model:\n - epochs executed: {checkpoint['actual_epochs_executed']}\n - Target_eval_miou: {checkpoint['target_eval_miou']}")
+        self.model.load_state_dict(checkpoint['model_state'])
+        self.optimizer.load_state_dict(checkpoint['optimizer_state'])
+        self.scheduler.load_state_dict(checkpoint['scheduler_state'])
+        self.max_eval_miou = checkpoint['target_eval_miou']
 
 
     def eval_train(self):
@@ -302,8 +259,10 @@ class ServerGTA:
         if self.args.wandb != None:
             wandb.log({'idda_train_miou':miou})
 
-        print(f'Mean IoU: {miou:.2%}')
+        print(f'Mean IoU: {miou:.2%} \n')
         self.mious['idda_test'].append(miou)
+        
+        return miou
      
         
   

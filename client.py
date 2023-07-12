@@ -15,7 +15,7 @@ import numpy as np
 from matplotlib.patches import Rectangle
 import wandb
 from inspect import signature
-
+from tqdm import tqdm
 
 
 class Client:
@@ -308,7 +308,7 @@ class Client:
         """
         self.model.eval()
         with torch.no_grad():
-            for i, (images, labels) in enumerate(self.test_loader):
+            for i, (images, labels) in enumerate(tqdm(self.test_loader)):
                 images = images.to(self.device) 
                 labels = labels.to(self.device)
                 outputs = self._get_outputs(images)
