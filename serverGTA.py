@@ -9,14 +9,16 @@ from torch import optim, nn
 from utils.utils import HardNegativeMining, MeanReduction
 from inspect import signature
 from torch.optim import lr_scheduler
-#from utils import definePath
+from style_transfer import StyleAugment
 import os
+from tqdm import tqdm
 
 class ServerGTA:
-    def __init__(self, args, source_dataset, test_clients, model, metrics):
+    def __init__(self, args, source_dataset, target_clients, test_clients, model, metrics):
         self.args = args
 
         self.source_dataset = source_dataset
+        self.target_clients = target_clients #lista dei target_clients ovvero i clienti che hanno una partizione di idda
         self.test_clients = test_clients #lista con tre elementi (idda_test, idda_same_dom, idda_diff_dom)
 
         self.model = model
@@ -36,7 +38,9 @@ class ServerGTA:
 
         self.t = 1 #how many epochs between the evaluations
         self.max_eval_miou = 0.0
-        self.actual_epochs_to_max_eval_miou = 0
+        self.pretrain_actual_epochs = 0
+
+        self.styleaug = StyleAugment(n_images_per_style = 25, b = 2 )
         
     def _get_outputs(self, images):
         
@@ -100,7 +104,7 @@ class ServerGTA:
             -) cur_epoch: current epoch of training;
         '''
         cumu_loss = 0
-        print('Epoch', cur_epoch + 1)
+        print('Epoch', cur_epoch)
         for cur_step, (images, labels) in enumerate(self.train_loader):
    
             images = images.to(self.device, dtype = torch.float32) 
@@ -141,7 +145,7 @@ class ServerGTA:
                 # We store the information related to the step in which we computed the loss of the n_steps-th mini-batch. This will
                 # be of use when plotting the learning curve.
                 self.n_10th_steps.append(self.count)
-                print(f'epoch {cur_epoch + 1} / {self.args.num_epochs}, step {cur_step + 1} / {self.n_total_steps}, loss = {loss.mean():.3f}')
+                print(f'epoch {cur_epoch} / {self.args.num_epochs + self.pretrain_actual_epochs }, step {cur_step + 1} / {self.n_total_steps}, loss = {loss.mean():.3f}')
         
         return cumu_loss / len(self.train_loader)
 
@@ -173,7 +177,9 @@ class ServerGTA:
             if self.args.wandb != None:
                     wandb.log({"lr": self.optimizer.param_groups[0]['lr']})
 
-            avg_loss = self.run_epoch(epoch, n_steps)
+            actual_epochs_executed =  self.pretrain_actual_epochs + epoch + 1 #the first addend is != 0 only if a checkpoint is loaded
+            
+            avg_loss = self.run_epoch(actual_epochs_executed, n_steps)
 
             #if there is a scheduler do a step at each epoch
             if self.scheduler != None:
@@ -187,7 +193,7 @@ class ServerGTA:
             # wandb
             if self.args.wandb != None:
                 wandb.log({"loss": avg_loss, "epoch": epoch})
-            actual_epochs_executed = epoch +1
+            
 
             #Check the miou on idda_train every t epochs
             if actual_epochs_executed % self.t == 0 or actual_epochs_executed == (self.args.num_epochs):
@@ -216,7 +222,8 @@ class ServerGTA:
                     "optimizer_state": self.optimizer.state_dict(),
                     "scheduler_state": self.scheduler.state_dict(),
                     "target_eval_miou": eval_miou,
-                    "actual_epochs_executed": actual_epochs_executed}
+                    "actual_epochs_executed": actual_epochs_executed,
+                    "mious": self.mious}
 
         root = 'checkpoints'
         customPath = self.args.name_checkpoint_to_save
@@ -226,15 +233,17 @@ class ServerGTA:
         print('Server saved checkpoint at ', path)
         
     
-    def load_model_opt_sch(self):
+    def load_checkpoint(self):
         root = 'checkpoints'
         path = os.path.join(root, self.args.checkpoint_to_load)
         checkpoint = torch.load(path)
-        print(f"\n=> Loading the trained model:\n - epochs executed: {checkpoint['actual_epochs_executed']}\n - Target_eval_miou: {checkpoint['target_eval_miou']}")
+        print(f"\n=> Loading the trained model:\n - epochs executed: {checkpoint['actual_epochs_executed']}\n - Target_eval_miou: {checkpoint['target_eval_miou']:.2%}\n")
         self.model.load_state_dict(checkpoint['model_state'])
         self.optimizer.load_state_dict(checkpoint['optimizer_state'])
         self.scheduler.load_state_dict(checkpoint['scheduler_state'])
         self.max_eval_miou = checkpoint['target_eval_miou']
+        self.pretrain_actual_epochs = checkpoint['actual_epochs_executed']
+        self.mious = checkpoint['mious']
 
 
     def eval_train(self):
@@ -259,7 +268,7 @@ class ServerGTA:
         if self.args.wandb != None:
             wandb.log({'idda_train_miou':miou})
 
-        print(f'Mean IoU: {miou:.2%} \n')
+        print(f'Mean IoU on idda_eval: {miou:.2%} \n')
         self.mious['idda_test'].append(miou)
         
         return miou
@@ -289,6 +298,15 @@ class ServerGTA:
     def load_server_model_on_client(self, client):
         client.model = self.model #<- con questa passi proprio il modello
         #client.model.load_state_dict(copy.deepcopy(self.model.state_dict())) #<- con questa passi i parametri del modello
+
+    def extract_styles(self):
+        #extract just two styles for debbugging purposes
+        i = 0
+        for target_client in self.target_clients:
+            self.styleaug.add_style(target_client.test_dataset, name=target_client.name)
+            i+=1
+            if i == 2:
+                break
 
 
     

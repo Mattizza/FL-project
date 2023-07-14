@@ -141,43 +141,42 @@ def get_datasets(args, train_transforms = None, test_transforms = None):
                                                 client_name='test_diff_dom')
         test_datasets = [test_same_dom_dataset, test_diff_dom_dataset]
 
-
-    elif args.dataset == 'femnist':
-        niid = args.niid
-        train_data_dir = os.path.join('data', 'femnist', 'data', 'niid' if niid else 'iid', 'train')
-        test_data_dir = os.path.join('data', 'femnist', 'data', 'niid' if niid else 'iid', 'test')
-        train_data, test_data = read_femnist_data(train_data_dir, test_data_dir)
-
-        train_transforms, test_transforms = get_transforms(args)
-
-        train_datasets, test_datasets = [], []
-
-        for user, data in train_data.items():
-            train_datasets.append(Femnist(data, train_transforms, user))
-        for user, data in test_data.items():
-            test_datasets.append(Femnist(data, test_transforms, user))
-
     elif args.dataset == 'gta5':
-        train_datasets.append(GTA5(transform=train_transforms, test_transform=test_transforms, client_name = 'train_gta5', target_dataset='idda'))
+        #When in gta/DA framework we should apply the train_transforms to source_dataset (gta5), and test_transforms to target_datasets (idda)
+        
+        #Create GTA5 dataset
+        train_datasets.append(GTA5(transform=train_transforms, client_name = 'train_gta5', target_dataset='idda'))
         
         idda_root = 'data/idda'
+        #Create idda_eval dataset
         with open(os.path.join(idda_root, 'train.txt'), 'r') as f:
             idda_train_data = f.read().splitlines()
-            idda_train = IDDADataset(root=idda_root, list_samples=idda_train_data, transform=train_transforms,
+            idda_train = IDDADataset(root=idda_root, list_samples=idda_train_data, transform=test_transforms,
                                                 client_name="idda_test")
-            
-            
+        
+        #Create idda_same_dom dataset
         with open(os.path.join(idda_root, 'test_same_dom.txt'), 'r') as f:
             test_same_dom_data = f.read().splitlines()
             test_same_dom_dataset = IDDADataset(root=idda_root, list_samples=test_same_dom_data, transform=test_transforms,
                                                 client_name='test_same_dom')
-            
+        
+        #Create idda_diff_dom dataset
         with open(os.path.join(idda_root, 'test_diff_dom.txt'), 'r') as f:
             test_diff_dom_data = f.read().splitlines()
             test_diff_dom_dataset = IDDADataset(root=idda_root, list_samples=test_diff_dom_data, transform=test_transforms,
                                                 client_name='test_diff_dom')
             
         test_datasets = [idda_train, test_same_dom_dataset, test_diff_dom_dataset]
+
+        #Create the idda_clients_datasets
+        idda_clients_datasets = []
+        with open(os.path.join(idda_root, 'train.json'), 'r') as f:
+                all_data = json.load(f)
+        for client_id in all_data.keys():
+            idda_clients_datasets.append(IDDADataset(root=idda_root, list_samples=all_data[client_id], transform=None,
+                                            client_name=client_id))
+
+        return train_datasets, idda_clients_datasets, test_datasets
 
     else:
         raise NotImplementedError
@@ -231,15 +230,16 @@ def gen_clients(args, train_datasets, test_train_datasets, test_datasets, model)
     return clients[0], clients[1]
 
 
-def gen_clients_dom_adapt(args, test_datasets, model):
-    clients = []
-    
-    #Creates 3 test clients: idda_test(file train.txt), idda_same_dom, idda_diff_dom
-    for test_dataset in test_datasets:
-        clients.append(Client(args, train_dataset=None, test_dataset = test_dataset, model = model, test_client=True))
+def gen_clients_dom_adapt(args, idda_clients_datasets, test_datasets, model):
+    clients = [[],[]] # ix=0 clients with idda partition, ix=1 clients with eval and tests partition (idda)
     
     #Creates the various clients, each one having a partition of the idda dataset
-    #for idda_client_dataset in idda_clients_datasets:
+    for idda_client_dataset in idda_clients_datasets:
+        clients[0].append(Client(args, train_dataset=None, test_dataset = idda_client_dataset, model = model, test_client=True))
+
+    #Creates 3 test clients: idda_test(file train.txt), idda_same_dom, idda_diff_dom
+    for test_dataset in test_datasets:
+        clients[1].append(Client(args, train_dataset=None, test_dataset = test_dataset, model = model, test_client=True))
 
     return clients
 
@@ -373,19 +373,32 @@ def main():
         model.cuda()
         print('Done.')
         print('Generate datasets...')
-        train_datasets, test_train_datasets, test_datasets = get_datasets(args)
-        print('Done.')
 
         metrics = set_metrics(args)
         
         if args.dataset == 'gta5':
-            test_clients = gen_clients_dom_adapt(args, test_datasets, model)
-            server = ServerGTA(args, source_dataset=train_datasets[0], test_clients=test_clients, model=model, metrics=metrics)
+            train_datasets, idda_clients_datasets, test_datasets = get_datasets(args)
+            print('Done.')
+            idda_clients, test_clients = gen_clients_dom_adapt(args, idda_clients_datasets, test_datasets, model)
+            server = ServerGTA(args, source_dataset=train_datasets[0], target_clients=idda_clients, test_clients=test_clients, model=model, metrics=metrics)
+            
+            ### Testing style extraction ###
+            if args.fda.lower() == 'true':
+                print('Extracting stlyes from clients...')
+                server.extract_styles()
+                print('Done.')
+                print('Aggiungi stile alle immagini GTA')
+                
+            ###
             server.create_opt_sch(config=config)
+            if args.checkpoint_to_load != None:
+                server.load_checkpoint()
             server.train()
             server.test()
 
         else:
+            train_datasets, test_train_datasets, test_datasets = get_datasets(args)
+            print('Done.')
             train_clients, test_clients = gen_clients(args, train_datasets, test_train_datasets, test_datasets, model)
             server = Server(args, train_clients, test_clients, model, metrics)
             server.distribute_config_dict(config)
