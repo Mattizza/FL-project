@@ -13,6 +13,9 @@ from style_transfer import StyleAugment
 import os
 from tqdm import tqdm
 
+from PIL import Image, ImageDraw
+import random
+
 class ServerGTA:
     def __init__(self, args, source_dataset, target_clients, test_clients, model, metrics):
         self.args = args
@@ -40,7 +43,8 @@ class ServerGTA:
         self.max_eval_miou = 0.0
         self.pretrain_actual_epochs = 0
 
-        self.styleaug = StyleAugment(n_images_per_style = 25, b = 2 )
+        self.b = 3
+        self.styleaug = StyleAugment(n_images_per_style = 25, b = self.b )
         
     def _get_outputs(self, images):
         
@@ -301,12 +305,55 @@ class ServerGTA:
 
     def extract_styles(self):
         #extract just two styles for debbugging purposes
-        i = 0
-        for target_client in self.target_clients:
-            self.styleaug.add_style(target_client.test_dataset, name=target_client.name)
-            i+=1
-            if i == 2:
-                break
+        target_client = self.target_clients[3]
+        self.styleaug.add_style(target_client.test_dataset, name=target_client.name)
+        
+        #for target_client in self.target_clients:
+        #    self.styleaug.add_style(target_client.test_dataset, name=target_client.name)
+    
+    def apply_styles(self):
+        self.source_dataset.set_style_tf_fn(self.styleaug.apply_style)
+
+    def compare_wo_w_style(self):
+
+        ix = random.randint(0, 400)
+        print(ix)
+
+        # Open the two images
+        self.source_dataset.return_original = True
+        image1 = self.source_dataset[ix][0]
+        self.source_dataset.return_original = False
+        image2 = self.source_dataset[ix][0]
+
+        # Resize the images to have the same height
+        height = max(image1.height, image2.height)
+        image1 = image1.resize((int(image1.width * height / image1.height), height))
+        image2 = image2.resize((int(image2.width * height / image2.height), height))
+
+        # Calculate the width for the white column
+        column_width = 10
+
+        # Create a new image with adjusted width
+        result_width = image1.width + column_width + image2.width
+        result = Image.new('RGB', (result_width, height))
+
+        # Paste the images with a white column
+        result.paste(image1, (0, 0))
+        result.paste((255, 255, 255), (image1.width, 0, image1.width + column_width, height))
+        result.paste(image2, (image1.width + column_width, 0))
+
+        # Display the result image
+        result.show()
+    
+    def delete_styles(self):
+        self.styleaug.delete_styles()
+
+    def list_styles(self):
+        print("These are the styles available:")
+        print(self.styleaug.styles_names)
+
+
+
 
 
     

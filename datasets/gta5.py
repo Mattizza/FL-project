@@ -43,6 +43,12 @@ class GTA5(VisionDataset):
         self.test_transform = test_transform
         self.target_transform = self.__map_labels()
         self.client_name = client_name
+        self.return_original = False
+
+        self.apply_only_fda = True #just for debugging
+
+        #!
+        self.style_tf_fn = None #style_transfer_function
         
         with open(os.path.join(self.root, 'train.txt'), 'r') as f:
             self.list_samples = f.read().splitlines()
@@ -62,11 +68,17 @@ class GTA5(VisionDataset):
         image = Image.open(imagePath)
         label = Image.open(labelPath)
 
-        if transform is not None:
-            image, label = transform(image, label)
-        
-        if self.target_transform is not None:
-            label = self.target_transform(label)
+        if self.return_original == False:
+
+            if self.style_tf_fn is not None:
+                image = self.style_tf_fn(image)
+            
+            if not self.apply_only_fda:
+                if transform is not None:
+                    image, label = transform(image, label)
+                
+                if self.target_transform is not None:
+                    label = self.target_transform(label)
 
         return image, label
 
@@ -79,9 +91,12 @@ class GTA5(VisionDataset):
     def __len__(self):
         return len(self.list_samples)
     
-    def add_fda():
-        #TODO: aggiungi davanti a tutte  le transforms il cambio di stile
-        self.transform.insert(0, fda)
+    def set_style_tf_fn(self, style_tf_fn):
+        self.style_tf_fn = style_tf_fn
+    
+    #def add_fda(self):
+    #    #TODO: aggiungi davanti a tutte  le transforms il cambio di stile
+    #    self.transform.insert(0, fda)
 
 
 

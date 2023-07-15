@@ -153,3 +153,7 @@ class StyleAugment:
         img_np__ = np.clip(np.round(img_np_), 0., 255.)
         Image.fromarray(np.uint8(images_target_np.transpose((1, 2, 0)))[:, :, ::-1]).show()
         Image.fromarray(np.uint8(img_np__).transpose((1, 2, 0))[:, :, ::-1]).show()
+    
+    def delete_styles(self):
+        self.styles = []
+        self.styles_names = []

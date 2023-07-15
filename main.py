@@ -387,8 +387,13 @@ def main():
                 print('Extracting stlyes from clients...')
                 server.extract_styles()
                 print('Done.')
-                print('Aggiungi stile alle immagini GTA')
                 
+                print('Aggiungi stile alle immagini GTA')
+                server.apply_styles
+                print('Done.')
+
+                #Stampa un immagine rnd senza e con stile
+                server.compare_wo_w_style()
             ###
             server.create_opt_sch(config=config)
             if args.checkpoint_to_load != None:
