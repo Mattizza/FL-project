@@ -141,50 +141,56 @@ def get_datasets(args, train_transforms = None, test_transforms = None):
                                                 client_name='test_diff_dom')
         test_datasets = [test_same_dom_dataset, test_diff_dom_dataset]
 
-    elif args.dataset == 'gta5':
-        #When in gta/DA framework we should apply the train_transforms to source_dataset (gta5), and test_transforms to target_datasets (idda)
-        
-        #Create GTA5 dataset
-        train_datasets.append(GTA5(transform=train_transforms, client_name = 'train_gta5', target_dataset='idda'))
-        
-        idda_root = 'data/idda'
-        #Create idda_eval dataset
-        with open(os.path.join(idda_root, 'train.txt'), 'r') as f:
-            idda_train_data = f.read().splitlines()
-            idda_train = IDDADataset(root=idda_root, list_samples=idda_train_data, transform=test_transforms,
-                                                client_name="idda_test")
-        
-        #Create idda_same_dom dataset
-        with open(os.path.join(idda_root, 'test_same_dom.txt'), 'r') as f:
-            test_same_dom_data = f.read().splitlines()
-            test_same_dom_dataset = IDDADataset(root=idda_root, list_samples=test_same_dom_data, transform=test_transforms,
-                                                client_name='test_same_dom')
-        
-        #Create idda_diff_dom dataset
-        with open(os.path.join(idda_root, 'test_diff_dom.txt'), 'r') as f:
-            test_diff_dom_data = f.read().splitlines()
-            test_diff_dom_dataset = IDDADataset(root=idda_root, list_samples=test_diff_dom_data, transform=test_transforms,
-                                                client_name='test_diff_dom')
-            
-        test_datasets = [idda_train, test_same_dom_dataset, test_diff_dom_dataset]
-
-        #Create the idda_clients_datasets
-        idda_clients_datasets = []
-        with open(os.path.join(idda_root, 'train.json'), 'r') as f:
-                all_data = json.load(f)
-        for client_id in all_data.keys():
-            idda_clients_datasets.append(IDDADataset(root=idda_root, list_samples=all_data[client_id], transform=None,
-                                            client_name=client_id))
-
-        return train_datasets, idda_clients_datasets, test_datasets
-
     else:
         raise NotImplementedError
 
     return train_datasets, test_train_datasets, test_datasets
 
     #[train_dataset], [test_train_dataset], [test_same_dom_data, test_diff__dom]
+
+
+def get_datasets_DA(train_transforms = None, test_transforms = None):
+    """
+    Function to create all the needed dataset when using gta5 in a DA framework
+    """
+
+    #Note: when in gta/DA framework we should apply the train_transforms to source_dataset (gta5), and test_transforms to target_datasets (idda)
     
+    #Create GTA5 dataset
+    train_dataset = GTA5(transform=train_transforms, client_name = 'train_gta5', target_dataset='idda')
+    
+    idda_root = 'data/idda'
+
+    #Create the idda_clients_datasets
+    idda_clients_datasets = []
+    with open(os.path.join(idda_root, 'train.json'), 'r') as f:
+            all_data = json.load(f)
+    for client_id in all_data.keys():
+        idda_clients_datasets.append(IDDADataset(root=idda_root, list_samples=all_data[client_id], transform=None,
+                                        client_name=client_id))
+
+    #Create idda_eval dataset
+    with open(os.path.join(idda_root, 'train.txt'), 'r') as f:
+        idda_train_data = f.read().splitlines()
+        idda_train = IDDADataset(root=idda_root, list_samples=idda_train_data, transform=test_transforms,
+                                            client_name="idda_test")
+    
+    #Create idda_same_dom dataset
+    with open(os.path.join(idda_root, 'test_same_dom.txt'), 'r') as f:
+        test_same_dom_data = f.read().splitlines()
+        test_same_dom_dataset = IDDADataset(root=idda_root, list_samples=test_same_dom_data, transform=test_transforms,
+                                            client_name='test_same_dom')
+    
+    #Create idda_diff_dom dataset
+    with open(os.path.join(idda_root, 'test_diff_dom.txt'), 'r') as f:
+        test_diff_dom_data = f.read().splitlines()
+        test_diff_dom_dataset = IDDADataset(root=idda_root, list_samples=test_diff_dom_data, transform=test_transforms,
+                                            client_name='test_diff_dom')
+        
+    eval_and_test_datasets = [idda_train, test_same_dom_dataset, test_diff_dom_dataset]
+
+    return train_dataset, idda_clients_datasets, eval_and_test_datasets
+
 
 def set_metrics(args):
     num_classes = get_dataset_num_classes(args.dataset)
@@ -243,7 +249,7 @@ def gen_clients_dom_adapt(args, idda_clients_datasets, test_datasets, model):
 
     return clients
 
-def get_sweep_transforms2(args, config):
+def get_sweep_transforms(args, config):
     # TODO: test your data augmentation by changing the transforms here!
     if args.model == 'deeplabv3_mobilenetv2':
         rnd_transforms = []
@@ -321,7 +327,7 @@ def sweep_train(args, config = None):
         print('Done.')
 
         if args.wandb == 'transformTuning':
-            train_transforms, test_transforms = get_sweep_transforms2(args, config)
+            train_transforms, test_transforms = get_sweep_transforms(args, config)
             print(train_transforms)
             print(test_transforms)
             train_datasets, test_train_datasets, test_datasets = get_datasets(args=args, train_transforms = train_transforms , test_transforms = test_transforms)
@@ -344,6 +350,37 @@ def sweep_train(args, config = None):
         server.eval_train()
         server.test()
 
+#TODO: funzione da testare
+def sweep_train_DA(args, config = None):
+    
+    with wandb.init(config = config):
+        config = wandb.config
+        print(f'Initializing model...')
+        model = model_init(args)
+        model.cuda()
+        print('Done.')
+        metrics = set_metrics(args)
+
+        if args.wandb == 'transformTuning':
+            transformConfig = config
+            train_transforms, test_transforms = get_sweep_transforms(args, transformConfig)
+            print(train_transforms)
+            print(test_transforms)
+            train_dataset, idda_clients_datasets, test_datasets = get_datasets_DA(train_transforms = train_transforms , test_transforms = test_transforms)
+            path = 'configs/' + args.config
+            configHyp = yaml_to_dict(path)
+
+        elif args.wandb == 'hypTuning':
+            train_dataset, idda_clients_datasets, test_datasets = get_datasets_DA()
+            configHyp = config
+
+        idda_clients, test_clients = gen_clients_dom_adapt(args, idda_clients_datasets, test_datasets, model)
+        server = ServerGTA(args, source_dataset=train_dataset, target_clients=idda_clients, test_clients=test_clients, model=model, metrics=metrics)
+        server.create_opt_sch(configHyp)
+
+        server.train()
+        server.test()
+
 
 def main():
     parser = get_parser()
@@ -354,7 +391,11 @@ def main():
         if args.sweep_config == None:
             sys.exit('An error occurred: you must specify a sweep_config file in the args!')
 
-        sweeping(args)
+        if args.dataset == 'idda':
+            sweeping(args)
+
+        elif args.dataset == 'gta5':
+            sweep_train_DA(args)
     
     else:
         #get the configuration from command line
@@ -377,31 +418,30 @@ def main():
         metrics = set_metrics(args)
         
         if args.dataset == 'gta5':
-            train_datasets, idda_clients_datasets, test_datasets = get_datasets(args)
+            train_dataset, idda_clients_datasets, test_datasets = get_datasets_DA()
             print('Done.')
             idda_clients, test_clients = gen_clients_dom_adapt(args, idda_clients_datasets, test_datasets, model)
-            server = ServerGTA(args, source_dataset=train_datasets[0], target_clients=idda_clients, test_clients=test_clients, model=model, metrics=metrics)
+            server = ServerGTA(args, source_dataset=train_dataset, target_clients=idda_clients, test_clients=test_clients, model=model, metrics=metrics)
             
-            ### Testing style extraction ###
             if args.fda.lower() == 'true':
                 print('Extracting stlyes from clients...')
                 server.extract_styles()
                 print('Done.')
                 
-                print('Aggiungi stile alle immagini GTA')
-                server.apply_styles
+                print('Add idda style to gta5 images')
+                server.apply_styles()
                 print('Done.')
 
-                #Stampa un immagine rnd senza e con stile
+                #Stampa un immagine random senza e con stile transfer
                 server.compare_wo_w_style()
-            ###
+
             server.create_opt_sch(config=config)
             if args.checkpoint_to_load != None:
                 server.load_checkpoint()
             server.train()
             server.test()
 
-        else:
+        elif args.dataset == 'idda':
             train_datasets, test_train_datasets, test_datasets = get_datasets(args)
             print('Done.')
             train_clients, test_clients = gen_clients(args, train_datasets, test_train_datasets, test_datasets, model)

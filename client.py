@@ -17,6 +17,8 @@ import wandb
 from inspect import signature
 from tqdm import tqdm
 
+from utils.style_extraction import preprocess
+
 
 class Client:
 
@@ -347,3 +349,25 @@ class Client:
         torch.save(state, path)
         
         print('Client saved checkpoint at ', path)
+    
+    #! Metodo che non viene mai usato
+    def extract_avg_style(self, b):
+        styles = []
+        n_images_per_style = len(self.test_dataset)
+
+        if self.n_images_per_style < 0:
+            return
+        
+        styles_name = self.name
+        
+        #Compute style for each image
+        for sample, _ in tqdm(self.test_dataset, total = n_images_per_style):
+            image = preprocess(sample)
+            styles.append(self._extract_style(image))
+        
+        #Compute the avg style:
+        styles = np.stack(styles, axis=0)
+        style = np.mean(styles, axis=0)
+        self.avg_style = style
+        
+        return style, styles_name
