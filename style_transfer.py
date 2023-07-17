@@ -11,7 +11,7 @@ class StyleAugment:
         self.styles = [] #banca degli stili
         self.styles_names = [] #nome di ogni stile
         self.n_images_per_style = n_images_per_style #num. di immagini usate per calcolare lo stile medio
-        self.L = L #grandezza percentuale di metà del lato della finestra (0-1)
+        self.L = L #grandezza percentuale di metà del lato della finestra (0-1). Quella che nel paper viene chiamata Beta
         self.size = size #size (W,H) to which resize images before style transfer
         self.sizes = None
         self.cv2 = False

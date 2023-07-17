@@ -18,11 +18,12 @@ from inspect import signature
 from tqdm import tqdm
 
 from utils.style_extraction import preprocess
+from style_extractor import StyleExtractor
 
 
 class Client:
 
-    def __init__(self, args, train_dataset, test_dataset, model, test_client=False):
+    def __init__(self, args, train_dataset, test_dataset, model, test_client=False, isTarget = False):
         
         self.args = args
         self.train_dataset = train_dataset if not test_client else None 
@@ -41,6 +42,10 @@ class Client:
         self.optimizer = None
         self.scheduler = None
 
+        if isTarget:
+            self.avg_style = None
+            self.win_sizes = None
+            self.style_extractor = StyleExtractor(self.test_dataset)
 
     @staticmethod
     def updatemetric(metric, outputs, labels):
@@ -350,24 +355,10 @@ class Client:
         
         print('Client saved checkpoint at ', path)
     
-    #! Metodo che non viene mai usato
-    def extract_avg_style(self, b):
-        styles = []
-        n_images_per_style = len(self.test_dataset)
 
-        if self.n_images_per_style < 0:
-            return
-        
-        styles_name = self.name
-        
-        #Compute style for each image
-        for sample, _ in tqdm(self.test_dataset, total = n_images_per_style):
-            image = preprocess(sample)
-            styles.append(self._extract_style(image))
-        
-        #Compute the avg style:
-        styles = np.stack(styles, axis=0)
-        style = np.mean(styles, axis=0)
-        self.avg_style = style
-        
-        return style, styles_name
+#####################
+#Altro metodo per estrarre gli stili
+
+    def extract_avg_style(self, b):
+        self.avg_style, self.win_sizes = self.style_extractor.extract_avg_style(b=b)
+        return self.avg_style, self.win_sizes, self.name

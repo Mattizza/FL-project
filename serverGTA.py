@@ -16,6 +16,8 @@ from tqdm import tqdm
 from PIL import Image, ImageDraw
 import random
 
+from style_applier import StyleApplier
+
 class ServerGTA:
     def __init__(self, args, source_dataset, target_clients, test_clients, model, metrics):
         self.args = args
@@ -43,8 +45,9 @@ class ServerGTA:
         self.max_eval_miou = 0.0
         self.pretrain_actual_epochs = 0
 
-        self.b = 3
+        self.b = 2
         self.styleaug = StyleAugment(n_images_per_style = 25, b = self.b )
+        self.style_applier = StyleApplier()
         
     def _get_outputs(self, images):
         
@@ -317,6 +320,7 @@ class ServerGTA:
     def compare_wo_w_style(self):
 
         ix = random.randint(0, 400)
+        ix = 288
         print(ix)
 
         # Open the two images
@@ -353,7 +357,23 @@ class ServerGTA:
         print(self.styleaug.styles_names)
 
 
+###################
+#Altro metodo per trasferire gli stili
 
+    def load_styles(self):
+        #il server ordina al client di estrarre e di passargli avg_style
+        #lo stile viene caricato nella banca degli stili dello style_applier
+        
+        #!for target_client in self.target_clients:
+        #!    client_style, styles_name, win_sizes = target_client.extract_avg_style() 
+        #!    self.style_applier.add_style_to_bank(client_style, styles_name)
+        #!    if self.style_applier.sizes == None:
+        #!        self.style_applier.set_win_sizes(win_sizes)
 
+        client_style, win_sizes, styles_name = self.target_clients[3].extract_avg_style(b = self.b)
+        self.style_applier.add_style_to_bank(client_style, styles_name)
+        if self.style_applier.sizes == None:
+            self.style_applier.set_win_sizes(win_sizes)
 
-    
+    def apply_styles(self):
+        self.source_dataset.set_style_tf_fn(self.style_applier.apply_style)   
