@@ -424,7 +424,7 @@ def main():
             server = ServerGTA(args, source_dataset=train_dataset, target_clients=idda_clients, test_clients=test_clients, model=model, metrics=metrics)
             
             #Metodo che sfrutta un unico style transfer
-            if args.fda.lower() == 'true':
+            """if args.fda.lower() == 'true':
                 print('Extracting stlyes from clients...')
                 server.extract_styles()
                 print('Done.')
@@ -434,16 +434,16 @@ def main():
                 print('Done.')
 
                 #Stampa un immagine random senza e con stile transfer
-                server.compare_wo_w_style()
+                server.compare_wo_w_style()"""
             
             #Metodo che sfrutta uno style_extractor e uno style_applier
-            """if args.fda.lower() == 'true':
+            if args.fda.lower() == 'true':
                 print('Extracting stlyes from clients...')
                 server.load_styles()
                 server.apply_styles()
                 print('Done')
                 server.compare_wo_w_style()
-                raise NotImplementedError"""
+                raise NotImplementedError
 
             server.create_opt_sch(config=config)
             if args.checkpoint_to_load != None:

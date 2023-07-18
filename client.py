@@ -17,7 +17,6 @@ import wandb
 from inspect import signature
 from tqdm import tqdm
 
-from utils.style_extraction import preprocess
 from style_extractor import StyleExtractor
 
 
@@ -42,7 +41,9 @@ class Client:
         self.optimizer = None
         self.scheduler = None
 
-        if isTarget:
+        self.isTarget = isTarget
+
+        if self.isTarget:
             self.avg_style = None
             self.win_sizes = None
             self.style_extractor = StyleExtractor(self.test_dataset)
