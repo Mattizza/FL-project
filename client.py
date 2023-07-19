@@ -7,7 +7,7 @@ from collections import defaultdict
 from torch.utils.data import DataLoader
 from utils.data_utils import idda_16_cmap, Label2Color
 
-from utils.utils import HardNegativeMining, MeanReduction, unNormalize
+from utils.utils import HardNegativeMining, MeanReduction, unNormalize, SelfTrainingLoss
 import os
 import matplotlib.pyplot as plt
 from torch.optim import lr_scheduler
@@ -24,19 +24,29 @@ class Client:
 
     def __init__(self, args, train_dataset, test_dataset, model, test_client=False, isTarget = False):
         
+        self.name = self.test_dataset.client_name
         self.args = args
+
+        #Datasets and loaders
         self.train_dataset = train_dataset if not test_client else None 
         self.test_dataset = test_dataset
-        self.name = self.test_dataset.client_name
-        self.model = model
-        #! da rimuovere se si passa dal main 
-        self.model.cuda()
         self.train_loader = DataLoader(self.train_dataset, batch_size=self.args.bs, shuffle=True, drop_last=True) \
             if not test_client else None
         self.test_loader = DataLoader(self.test_dataset, batch_size=1, shuffle=False)
-        self.criterion = nn.CrossEntropyLoss(ignore_index=255, reduction='none')
-        self.reduction = HardNegativeMining() if self.args.hnm else MeanReduction()
+        
+        #Models
+        self.model = model
+        #! da rimuovere se si passa dal main 
+        self.model.cuda()
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+        #choose loss
+        if args.self_train == 'true':
+            self.self_train_loss = SelfTrainingLoss()
+            self.self_train_loss.set_teacher(self.model)
+        else:
+            self.criterion = nn.CrossEntropyLoss(ignore_index=255, reduction='none')
+            self.reduction = HardNegativeMining() if self.args.hnm else MeanReduction()
 
         self.optimizer = None
         self.scheduler = None
@@ -47,6 +57,7 @@ class Client:
             self.avg_style = None
             self.win_sizes = None
             self.style_extractor = StyleExtractor(self.test_dataset)
+        
 
     @staticmethod
     def updatemetric(metric, outputs, labels):
@@ -119,6 +130,59 @@ class Client:
                 print(f'epoch {cur_epoch + 1} / {self.args.num_epochs}, step {cur_step + 1} / {self.n_total_steps}, loss = {loss.mean():.3f}')
         
         return cumu_loss /len(self.train_loader)
+    
+
+    def run_epoch_self_train(self, cur_epoch, n_steps):
+        cumu_loss = 0
+        print('Epoch', cur_epoch + 1)
+        for cur_step, (images, _) in enumerate(self.train_loader):
+                
+            # Total steps needed to complete an epoch. Computed as:
+            # 
+            #           self.n_total_steps = floor(len(self.dataset) / self.args.bs).
+            # 
+            # Example: len(self.dataset) = 600, self.args.bs = 16, self.n_total_steps = 37
+            self.n_total_steps = len(self.train_loader)
+
+            images = images.to(self.device, dtype = torch.float32) 
+            outputs = self._get_outputs(images)
+            
+            loss = self.self_train_loss(outputs, images)
+
+
+            cumu_loss += loss.item()
+            self.optimizer.zero_grad()
+            loss.backward()
+            self.optimizer.step()
+            if self.args.wandb != None and self.args.framework == 'centralized':
+                wandb.log({"batch loss": loss.item()})
+
+            # We keep track of the loss. Notice we are storing the loss for
+            # each mini-batch.
+            #wandb.log({"loss": loss.mean()})
+            
+            # We are considering 10 batch at a time. TO DO: define a way to handle different values.
+            # We are considering n_steps batch at a time.
+            if (cur_step + 1) % n_steps == 0 or cur_step + 1 == self.n_total_steps:
+
+                # We store the information about the steps using self.count. This is needed if we want to plot the learning curve.
+                if (cur_step + 1) % n_steps == 0:
+                    self.count += n_steps
+                else:
+                    self.count += (cur_step + 1) % n_steps  # We need to consider the special case in which we have a number of batches
+                                                            # different from the steps we fixed (e.g. each 10 steps, but only 7 left).
+                
+                # We store the values of the mean loss and of the std each n_steps mini-batches (e.g. mean loss of the 10th mini-batch).
+                self.mean_loss.append(loss.mean().cpu().detach().numpy())
+                self.mean_std.append(loss.std().cpu().detach().numpy())
+                
+                # We store the information related to the step in which we computed the loss of the n_steps-th mini-batch. This will
+                # be of use when plotting the learning curve.
+                self.n_10th_steps.append(self.count)
+                print(f'epoch {cur_epoch + 1} / {self.args.num_epochs}, step {cur_step + 1} / {self.n_total_steps}, loss = {loss.mean():.3f}')
+        
+        return cumu_loss /len(self.train_loader)
+
 
 
     #diz di prova
@@ -276,8 +340,11 @@ class Client:
             # wandb
             if self.args.wandb != None and self.args.framework == 'centralized':
                     wandb.log({"lr": self.optimizer.param_groups[0]['lr']})
-
-            avg_loss = self.run_epoch(epoch, n_steps)
+            
+            if self.args.self_train == 'true':
+                avg_loss = self.run_epoch_self_train(epoch, n_steps)
+            else:
+                avg_loss = self.run_epoch(epoch, n_steps)
             
             # ==== Saving the model if in centralized framework ====
             
@@ -363,3 +430,4 @@ class Client:
     def extract_avg_style(self, b):
         self.avg_style, self.win_sizes = self.style_extractor.extract_avg_style(b=b)
         return self.avg_style, self.win_sizes, self.name
+    

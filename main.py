@@ -149,13 +149,15 @@ def get_datasets(args, train_transforms = None, test_transforms = None):
     #[train_dataset], [test_train_dataset], [test_same_dom_data, test_diff__dom]
 
 
-def get_datasets_DA(train_transforms = None, test_transforms = None):
+def get_datasets_DA(args, train_transforms = None, test_transforms = None):
     """
     Function to create all the needed dataset when using gta5 in a DA framework
     """
 
     #Note: when in gta/DA framework we should apply the train_transforms to source_dataset (gta5), and test_transforms to target_datasets (idda)
-    
+    if train_transforms == None or test_transforms == None:
+        train_transforms, test_transforms = get_transforms(args)
+
     #Create GTA5 dataset
     train_dataset = GTA5(transform=train_transforms, client_name = 'train_gta5', target_dataset='idda')
     
@@ -418,7 +420,7 @@ def main():
         metrics = set_metrics(args)
         
         if args.dataset == 'gta5':
-            train_dataset, idda_clients_datasets, test_datasets = get_datasets_DA()
+            train_dataset, idda_clients_datasets, test_datasets = get_datasets_DA(args)
             print('Done.')
             idda_clients, test_clients = gen_clients_dom_adapt(args, idda_clients_datasets, test_datasets, model)
             server = ServerGTA(args, source_dataset=train_dataset, target_clients=idda_clients, test_clients=test_clients, model=model, metrics=metrics)

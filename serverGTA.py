@@ -365,7 +365,7 @@ class ServerGTA:
         #lo stile viene caricato nella banca degli stili dello style_applier
         
         #!for target_client in self.target_clients:
-        #!    client_style, styles_name, win_sizes = target_client.extract_avg_style() 
+        #!    client_style, win_sizes, styles_name = target_client.extract_avg_style() 
         #!    self.style_applier.add_style_to_bank(client_style, styles_name)
         #!    if self.style_applier.sizes == None:
         #!        self.style_applier.set_win_sizes(win_sizes)
@@ -376,4 +376,4 @@ class ServerGTA:
             self.style_applier.set_win_sizes(win_sizes)
 
     def apply_styles(self):
-        self.source_dataset.set_style_tf_fn(self.style_applier.apply_style)   
+        self.source_dataset.set_style_tf_fn(self.style_applier.apply_style)

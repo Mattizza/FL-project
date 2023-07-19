@@ -45,7 +45,7 @@ class GTA5(VisionDataset):
         self.client_name = client_name
         self.return_original = False
 
-        self.apply_only_fda = True #just for debugging
+        self.apply_only_fda = False #just for debugging
 
         #!
         self.style_tf_fn = None #style_transfer_function
