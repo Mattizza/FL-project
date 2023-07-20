@@ -6,6 +6,8 @@ import torch
 import wandb
 #from utils import definePath
 import os
+import sys
+from tqdm import tqdm
 
 class Server:
 
@@ -23,7 +25,16 @@ class Server:
             self.mious = {'eval_train':[], "test_same_dom":[], "test_diff_dom":[]}
         elif args.dataset == 'gta5':
             self.mious = {'eval_train': [], 'idda_test':[], "test_same_dom":[], "test_diff_dom":[]}
-        
+
+        #Task 4
+        if self.args.self_train == 'true':
+            self.teacher_model = model #creo un teacher model non allenato
+            if self.args.checkpoint_to_load != None:
+                self.load_pretrained_model() #carico un model allenato con gta
+                self.model_params_dict = copy.deepcopy(self.model.state_dict())
+            else:
+                sys.exit('An error occurred: you must specify a checkpoint to load if in self_train mode!')
+            
 
     def select_clients(self):
         num_clients = min(self.args.clients_per_round, len(self.train_clients))
@@ -53,6 +64,8 @@ class Server:
         for i, client in enumerate(self.select_clients()):
             print(client.name)
             self.load_server_model_on_client(client)
+            if self.args.self_train == 'true':
+                client.self_train_loss.set_teacher(self.teacher_model)#passa in teacher model alla loss del client
             num_samples, update , avg_loss= client.train()
 
             #client_update = copy.deepcopy(client.model.state_dict())
@@ -110,9 +123,10 @@ class Server:
         che fa l'evaluation su entrambi i test clients (test_same_dom e test_diff_dom)
         """
         # ==== Loading the checkpoint if enabled====
-        if self.args.checkpoint_to_load != None:
+        #! metodo da cambiare o da rimuovere
+        """if self.args.checkpoint_to_load != None:
             self.load_model_opt_sch()
-            print(f"Checkpoint {self.args.checkpoint_to_load} loaded")
+            print(f"Checkpoint {self.args.checkpoint_to_load} loaded")"""
 
 
         if self.args.framework == 'federated' and self.args.wandb != None:
@@ -122,8 +136,17 @@ class Server:
 
         round_min_loss = float('inf')
         
+        if self.args.self_train == "true" and self.args.T == None:
+            self.teacher_model.load_state_dict(self.model_params_dict) #aggiorno il teacher model (lo rendo uguale a global model)
+
+ 
         for round in range(self.args.num_rounds):
             print(f'\nRound {round+1}\n')
+
+            #Task 4
+            if self.args.self_train == 'true' and self.args.T != None:
+                if round % self.args.T == 0: #ogni T round (e a round 0)
+                    self.teacher_model.load_state_dict(self.model_params_dict) #aggiorno il teacher model (lo rendo uguale a global model)
 
             updates, round_avg_loss = self.train_round() #crea un lista [(num_samples, model_state_dict),...,]           
             
@@ -135,7 +158,7 @@ class Server:
             if round_avg_loss < round_min_loss and self.args.framework == 'federated' and self.args.name_checkpoint_to_save != None:
                 round_min_loss = round_avg_loss
                 self.save_model_opt_sch(round+1)
-            
+
         print("\nTraining finished!")
 
     
@@ -224,6 +247,14 @@ class Server:
 
     def load_server_model_on_client(self, client):
         client.model.load_state_dict(self.model_params_dict)
+
+    def load_pretrained_model(self):
+        root = 'checkpoints'
+        path = os.path.join(root, self.args.checkpoint_to_load)
+        checkpoint = torch.load(path)
+        print(f"\n=> Loading the pre-trained model:\n\t- source dataset: gta \n\t- epochs executed: {checkpoint['actual_epochs_executed']}\n")
+        self.model.load_state_dict(checkpoint['model_state'])
+
 
 
     

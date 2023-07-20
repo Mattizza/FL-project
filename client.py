@@ -24,7 +24,7 @@ class Client:
 
     def __init__(self, args, train_dataset, test_dataset, model, test_client=False, isTarget = False):
         
-        self.name = self.test_dataset.client_name
+        
         self.args = args
 
         #Datasets and loaders
@@ -33,6 +33,8 @@ class Client:
         self.train_loader = DataLoader(self.train_dataset, batch_size=self.args.bs, shuffle=True, drop_last=True) \
             if not test_client else None
         self.test_loader = DataLoader(self.test_dataset, batch_size=1, shuffle=False)
+
+        self.name = self.test_dataset.client_name
         
         #Models
         self.model = model
@@ -43,7 +45,7 @@ class Client:
         #choose loss
         if args.self_train == 'true':
             self.self_train_loss = SelfTrainingLoss()
-            self.self_train_loss.set_teacher(self.model)
+            #self.self_train_loss.set_teacher(self.model) Rimosso perchè viene settato dal server
         else:
             self.criterion = nn.CrossEntropyLoss(ignore_index=255, reduction='none')
             self.reduction = HardNegativeMining() if self.args.hnm else MeanReduction()
@@ -137,13 +139,9 @@ class Client:
         print('Epoch', cur_epoch + 1)
         for cur_step, (images, _) in enumerate(self.train_loader):
                 
-            # Total steps needed to complete an epoch. Computed as:
-            # 
-            #           self.n_total_steps = floor(len(self.dataset) / self.args.bs).
-            # 
-            # Example: len(self.dataset) = 600, self.args.bs = 16, self.n_total_steps = 37
             self.n_total_steps = len(self.train_loader)
 
+            #! è corretto che queste immagini abbiano subito le stesse transforms?
             images = images.to(self.device, dtype = torch.float32) 
             outputs = self._get_outputs(images)
             

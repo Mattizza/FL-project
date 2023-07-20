@@ -1,0 +1,23 @@
+method : random
+
+metric:
+  name: idda_train_miou
+  goal: maximise
+
+parameters:
+  optimizer:
+    parameters:
+
+      name: 
+        values: ["SGD", "Adam", "AdamW", "RMSprop"]
+        distribution: categorical
+  
+      lr:
+        distribution: log_uniform_values
+        min: 1e-05
+        max: 0.1
+  
+  scheduler:
+    parameters:
+      name:
+        value: None

@@ -25,7 +25,9 @@ def get_parser():
     parser.add_argument('--config', type=str, default='bestHypSameDom.yaml', help = 'name of the file containing the configuration, stored in the configs folder (include extention .yaml)')
     parser.add_argument('--fda', type=str, default='False', help = 'set True if you want to apply FDA.')
 
+    #Task 4
     parser.add_argument('--self_train', type=str, default='false', help = 'set true if you want to use self train loss.')
+    parser.add_argument('--T', type=int, default=None, help='num. of round between each teacher model update.')
 
     #wandb args
     parser.add_argument('--wandb', type = str, choices=[None, 'singleRun', 'hypTuning', 'transformTuning'], default= None, help='None: deactivate wandb, singleRun: track a single run with fixed parameters, hypTuning: do hyperparam tuning')

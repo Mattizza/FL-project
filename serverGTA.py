@@ -93,7 +93,7 @@ class ServerGTA:
                 print("No scheduler")
 
 
-    def  create_opt_sch(self, config: dict):
+    def  create_opt_sch(self, config):
         """
             Simply call the method to create the optimizer and the scheduler
         """
@@ -107,8 +107,7 @@ class ServerGTA:
 
     def run_epoch(self, cur_epoch, n_steps: int) -> None:
         '''
-        This method locally trains the model with the dataset of the client. It handles the training at mini-batch level.
-            -) cur_epoch: current epoch of training;
+        This method is use to run a single epoch in the train on the source dataset (GTA)
         '''
         cumu_loss = 0
         print('Epoch', cur_epoch)
@@ -125,7 +124,7 @@ class ServerGTA:
             self.optimizer.step()
 
             # === Wandb ===
-            if self.args.wandb != None and self.args.framework == 'centralized':
+            if self.args.wandb != None:
                 wandb.log({"batch loss": loss.item()})
 
             # === Printing === 
@@ -158,9 +157,7 @@ class ServerGTA:
 
     def train(self, n_steps=10):
         '''
-        This method locally trains the model with the dataset of the client. It handles the training at epochs level
-        (by calling the run_epoch method for each local epoch of training)
-        :return: length of the local dataset, copy of the model parameters
+        This method trains the model on the source dataset (GTA).
         '''
 
         self.model.train()
@@ -376,4 +373,4 @@ class ServerGTA:
             self.style_applier.set_win_sizes(win_sizes)
 
     def apply_styles(self):
-        self.source_dataset.set_style_tf_fn(self.style_applier.apply_style)
+        self.source_dataset.set_style_tf_fn(self.style_applier.apply_style)   

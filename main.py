@@ -315,7 +315,11 @@ def sweeping(args):
     else:
         sweep_id = args.sweep_id
 
-    train_func = lambda: sweep_train(args=args)
+    if args.dataset == 'idda':
+        train_func = lambda: sweep_train(args=args)
+    elif args.dataset == 'gta5':
+        train_func = lambda: sweep_train_DA(args=args)
+
     wandb.agent(sweep_id = sweep_id, function = train_func, count = 10, project = project_name)
 
 
@@ -373,11 +377,12 @@ def sweep_train_DA(args, config = None):
             configHyp = yaml_to_dict(path)
 
         elif args.wandb == 'hypTuning':
-            train_dataset, idda_clients_datasets, test_datasets = get_datasets_DA()
+            train_dataset, idda_clients_datasets, test_datasets = get_datasets_DA(args)
             configHyp = config
 
         idda_clients, test_clients = gen_clients_dom_adapt(args, idda_clients_datasets, test_datasets, model)
         server = ServerGTA(args, source_dataset=train_dataset, target_clients=idda_clients, test_clients=test_clients, model=model, metrics=metrics)
+        print(configHyp)
         server.create_opt_sch(configHyp)
 
         server.train()
@@ -393,11 +398,7 @@ def main():
         if args.sweep_config == None:
             sys.exit('An error occurred: you must specify a sweep_config file in the args!')
 
-        if args.dataset == 'idda':
-            sweeping(args)
-
-        elif args.dataset == 'gta5':
-            sweep_train_DA(args)
+        sweeping(args)
     
     else:
         #get the configuration from command line

@@ -4,3 +4,4 @@ venv
 *.log
 wandb
 *.png
+*.pth.tar
