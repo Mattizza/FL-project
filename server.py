@@ -17,23 +17,30 @@ class Server:
         self.test_clients = test_clients #lista con due elementi (istanza della classe client (test_client = True))
         #self.selected_clients = [] #client che vengono selezionati ad ogni round
         self.model = model #da passare poi al client
+        
+        # ==== Loading the checkpoint if enabled====
+        if self.args.checkpoint_to_load != None:
+            if self.args.self_train == 'true': #load a model trained on source dataset
+                self.load_source_trained_model()
+            else:
+                self.load_model_to_test_results() #load a model to test the performances
+        
         self.metrics = metrics
         self.model_params_dict = copy.deepcopy(self.model.state_dict())
-        #per setting centralized
-        self.params = None
+
         if args.dataset != 'gta5':
             self.mious = {'eval_train':[], "test_same_dom":[], "test_diff_dom":[]}
         elif args.dataset == 'gta5':
             self.mious = {'eval_train': [], 'idda_test':[], "test_same_dom":[], "test_diff_dom":[]}
+        
+        
 
         #Task 4
+        #
         if self.args.self_train == 'true':
-            self.teacher_model = model #creo un teacher model non allenato
-            if self.args.checkpoint_to_load != None:
-                self.load_pretrained_model() #carico un model allenato con gta
-                self.model_params_dict = copy.deepcopy(self.model.state_dict())
-            else:
+            if self.args.checkpoint_to_load == None:
                 sys.exit('An error occurred: you must specify a checkpoint to load if in self_train mode!')
+            self.teacher_model = model #creo un teacher model allenato
             
 
     def select_clients(self):
@@ -122,13 +129,8 @@ class Server:
         chiama eval_train (train.txt) che fa l'evaluation sul train client e test()
         che fa l'evaluation su entrambi i test clients (test_same_dom e test_diff_dom)
         """
-        # ==== Loading the checkpoint if enabled====
-        #! metodo da cambiare o da rimuovere
-        """if self.args.checkpoint_to_load != None:
-            self.load_model_opt_sch()
-            print(f"Checkpoint {self.args.checkpoint_to_load} loaded")"""
 
-
+        # wandb in federated
         if self.args.framework == 'federated' and self.args.wandb != None:
             wandb.log({"Num. clients per round": self.args.clients_per_round}, commit = False)
             wandb.log({"Num. local epochs": self.args.num_epochs}, commit = False)
@@ -136,9 +138,10 @@ class Server:
 
         round_min_loss = float('inf')
         
-        if self.args.self_train == "true" and self.args.T == None:
+        #Penso sia superfluo perchè il teacher model è già allenato
+        """if self.args.self_train == "true" and self.args.T == None:
             self.teacher_model.load_state_dict(self.model_params_dict) #aggiorno il teacher model (lo rendo uguale a global model)
-
+        """
  
         for round in range(self.args.num_rounds):
             print(f'\nRound {round+1}\n')
@@ -154,50 +157,16 @@ class Server:
             self.model.load_state_dict(new_model_parmas)
             self.model_params_dict = copy.deepcopy(self.model.state_dict())
 
-            # ==== Saving the checkpoint if in federated framework ====
+            """# ==== Saving the checkpoint if in federated framework ====
             if round_avg_loss < round_min_loss and self.args.framework == 'federated' and self.args.name_checkpoint_to_save != None:
                 round_min_loss = round_avg_loss
-                self.save_model_opt_sch(round+1)
+                self.save_model_opt_sch(round+1)"""
+        
+        #==== After the trainig save the checkpoint if enabled ====
+        if self.args.name_checkpoint_to_save != None:
+            self.save_checkpoint(self.args.num_epochs, self.args.num_rounds)
 
         print("\nTraining finished!")
-
-    
-    def save_model_opt_sch(self, rounds = None):
-        
-        state = {"model_state": self.model.state_dict()}
-
-        #! magari in seguito aggiungi anche lo stato dell'optimizer e dello scheduler
-        #"optimizer_state": self.optimizer.state_dict(),
-        #"scheduler_state": self.scheduler.state_dict()}
-
-        #if self.args.framework == 'federated' or self.args.dataset == 'idda': #idda da rimuovere, lasciare solo centralized
-        #    state['round': rounds]
-
-        #elif self.args.framework == 'centralized' or self.args.dataset == 'iddaCB' or self.args.dataset == 'gta5' :
-        #    state["epoch": epochs]
-
-        state['round'] = rounds
-        #! creare una funzione per definire nomi dei path personalizzati in base a optimizer, numero epoche etc
-        
-        #customPath = definePath(self.args)
-        root = 'savedModels'
-        customPath = self.args.name_checkpoint_to_save
-        path = os.path.join(root, customPath)
-        torch.save(state, path)
-        
-        print('Server saved checkpoint at ', path)
-        
-    
-    def load_model_opt_sch(self):
-        root = "savedModels"
-        path = os.path.join(root, self.args.checkpoint_to_load)
-        state = torch.load(path)
-        if self.args.framework == 'federated':
-            print(f"\n=> Loading the model trained for {state['round']} rounds")
-        elif self.args.framework == 'centralized':
-            print(f"\n=> Loading the model trained for {state['epoch']} epochs")
-        self.model.load_state_dict(state['model_state'])
-
 
     def eval_train(self):
         """
@@ -219,11 +188,19 @@ class Server:
         miou = metric.get_results()['Mean IoU']
         if self.args.wandb != None:
             wandb.log({'train_miou':miou})
+        
+        #Set eval_miou on checkpoint if enabled
+        if self.args.name_checkpoint_to_save != None:
+            root1 = 'checkpoints'
+            root2 = 'idda'
+            path = os.path.join(root1, root2, self.args.name_checkpoint_to_save)
+            checkpoint = torch.load(path)
+            checkpoint['target_eval_miou'] = miou
+            torch.save(checkpoint, path)
+            print("\nAdded eval_miou in checkpoint\n")
 
         print(f'Mean IoU: {miou:.2%}')
         self.mious['eval_train'].append(miou)
-     
-        
   
 
     def test(self):
@@ -247,14 +224,52 @@ class Server:
 
     def load_server_model_on_client(self, client):
         client.model.load_state_dict(self.model_params_dict)
+    
 
-    def load_pretrained_model(self):
-        root = 'checkpoints'
-        path = os.path.join(root, self.args.checkpoint_to_load)
+    def save_checkpoint(self, epochs = None, rounds = None):
+        
+        checkpoint = {"model_state": self.model.state_dict(),
+                    "actual_epochs_executed": epochs,
+                    "actual_rounds_executed": rounds,
+                    "target_eval_miou": None,
+                    "eval_dataset" : type(self.train_clients[0].test_dataset).__name__,
+                    "train_dataset": type(self.test_clients[0].test_dataset).__name__}
+        
+        root1 = 'checkpoints'
+        root2 = 'idda'
+        customPath = self.args.name_checkpoint_to_save
+        path = os.path.join(root1, root2, customPath)
+        torch.save(checkpoint, path)
+        
+        print(f"\n=> Saving checkpoint at {path}.\n")
+
+
+    def load_model_to_test_results(self):
+        root1 = 'checkpoints'
+        root2 = 'idda'
+        path = os.path.join(root1, root2, self.args.checkpoint_to_load)
         checkpoint = torch.load(path)
-        print(f"\n=> Loading the pre-trained model:\n\t- source dataset: gta \n\t- epochs executed: {checkpoint['actual_epochs_executed']}\n")
+        if self.args.framework == 'centralized':
+            print(f"\n=> Loading the model trained on {checkpoint['train_dataset']}:"
+                  f"\n - epochs executed: {checkpoint['actual_epochs_executed']}"
+                  f"\n - Target_eval_miou on {checkpoint['eval_dataset']}: {checkpoint['target_eval_miou']:.2%}\n")
+        elif self.args.frameworf == 'federated':
+            print(f"\n=> Loading the model trained on {checkpoint['train_dataset']}:"
+                  f"\n - local epochs executed: {checkpoint['actual_epochs_executed']}"
+                  f"\n - rounds executed: {checkpoint['actual_rounds_executed']}"
+                  f"\n - Target_eval_miou on {checkpoint['eval_dataset']}: {checkpoint['target_eval_miou']:.2%}\n")
+
         self.model.load_state_dict(checkpoint['model_state'])
+    
 
-
-
+    def load_source_trained_model(self):
+        root1 = 'checkpoints'
+        root2 = 'gta'
+        path = os.path.join(root1, root2, self.args.checkpoint_to_load)
+        checkpoint = torch.load(path)
+        print(f"\n=> Loading the model trained on {checkpoint['train_dataset']}:"
+                  f"\n - epochs executed: {checkpoint['actual_epochs_executed']}"
+                  f"\n - Target_eval_miou on {checkpoint['eval_dataset']}: {checkpoint['target_eval_miou']:.2%}\n")
+        
+        self.model.load_state_dict(checkpoint['model_state'])
     

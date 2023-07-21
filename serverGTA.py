@@ -29,8 +29,7 @@ class ServerGTA:
         self.model = model
         self.metrics = metrics
         self.model_params_dict = copy.deepcopy(self.model.state_dict()) #da eliminare
-        #per setting centralized
-        self.params = None #da eliminare
+        
         self.train_loader = DataLoader(self.source_dataset, batch_size=self.args.bs, shuffle=True, drop_last=True)
         self.mious = {'idda_test':[], "test_same_dom":[], "test_diff_dom":[]}
 
@@ -41,7 +40,7 @@ class ServerGTA:
         self.optimizer = None
         self.scheduler = None
 
-        self.t = 1 #how many epochs between the evaluations
+        self.t = self.args.t #how many epochs between the evaluations
         self.max_eval_miou = 0.0
         self.pretrain_actual_epochs = 0
 
@@ -220,28 +219,31 @@ class ServerGTA:
     
     def save_checkpoint(self, eval_miou, actual_epochs_executed):
         
-        print(f"=> Saving checkpoint. Target_eval_miou: {eval_miou:.2%}\n")
+        
 
         checkpoint = {"model_state": self.model.state_dict(),
                     "optimizer_state": self.optimizer.state_dict(),
                     "scheduler_state": self.scheduler.state_dict(),
                     "target_eval_miou": eval_miou,
                     "actual_epochs_executed": actual_epochs_executed,
-                    "mious": self.mious}
+                    "eval_dataset" : type(self.test_clients[0].test_dataset).__name__,
+                    "mious": self.mious,
+                    "train_dataset": type(self.source_dataset).__name__}
 
-        root = 'checkpoints'
+        root1 = 'checkpoints'
+        root2 = 'gta'
         customPath = self.args.name_checkpoint_to_save
-        path = os.path.join(root, customPath)
+        path = os.path.join(root1, root2, customPath)
         torch.save(checkpoint, path)
-        
-        print('Server saved checkpoint at ', path)
+        print(f"=> Saving checkpoint at {path}.\nTarget_eval_miou: {eval_miou:.2%}\n")
         
     
     def load_checkpoint(self):
-        root = 'checkpoints'
-        path = os.path.join(root, self.args.checkpoint_to_load)
+        root1 = 'checkpoints'
+        root2 = 'gta'
+        path = os.path.join(root1, root2, self.args.checkpoint_to_load)
         checkpoint = torch.load(path)
-        print(f"\n=> Loading the trained model:\n - epochs executed: {checkpoint['actual_epochs_executed']}\n - Target_eval_miou: {checkpoint['target_eval_miou']:.2%}\n")
+        print(f"\n=> Loading the model trained on {checkpoint['train_dataset']}:\n - epochs executed: {checkpoint['actual_epochs_executed']}\n - Target_eval_miou on {checkpoint['eval_dataset']}: {checkpoint['target_eval_miou']:.2%}\n")
         self.model.load_state_dict(checkpoint['model_state'])
         self.optimizer.load_state_dict(checkpoint['optimizer_state'])
         self.scheduler.load_state_dict(checkpoint['scheduler_state'])
@@ -314,10 +316,10 @@ class ServerGTA:
     def apply_styles(self):
         self.source_dataset.set_style_tf_fn(self.styleaug.apply_style)
 
-    def compare_wo_w_style(self):
-
-        ix = random.randint(0, 400)
+    def compare_wo_w_style(self, ix = None):
         ix = 288
+        if ix == None:
+            ix = random.randint(0, 400)
         print(ix)
 
         # Open the two images

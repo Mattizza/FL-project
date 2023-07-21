@@ -301,11 +301,11 @@ def sweeping(args):
     wandb.login()
 
     if args.wandb ==  'hypTuning':
-        with open('configs/' + args.sweep_config, 'r') as f:
+        with open('sweep_configs/' + args.sweep_config, 'r') as f:
                 dict_sweep = yaml.safe_load(f)
     
     elif args.wandb == 'transformTuning':
-        with open('configs/' + args.sweep_config, 'r') as f:
+        with open('sweep_configs/' + args.sweep_config, 'r') as f:
                 dict_sweep = yaml.safe_load(f)
 
 
@@ -445,7 +445,6 @@ def main():
                 server.load_styles()
                 server.apply_styles()
                 print('Done')
-                server.compare_wo_w_style()
                 raise NotImplementedError
 
             server.create_opt_sch(config=config)

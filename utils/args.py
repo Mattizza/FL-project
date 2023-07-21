@@ -23,6 +23,9 @@ def get_parser():
 
     parser.add_argument('--framework', type=str, choices = ['centralized', 'federated'], required=True, help = 'Choose a centralized or a federated framework')
     parser.add_argument('--config', type=str, default='bestHypSameDom.yaml', help = 'name of the file containing the configuration, stored in the configs folder (include extention .yaml)')
+    
+    #Task 3
+    parser.add_argument('--t', type=int, default=1, help='num. of epoch between each evaluation on target dataset.')
     parser.add_argument('--fda', type=str, default='False', help = 'set True if you want to apply FDA.')
 
     #Task 4
@@ -35,7 +38,7 @@ def get_parser():
     parser.add_argument('--wb_project_name', type = str, default = 'generalProject', help='The name of the project to store the wandb runs')
     parser.add_argument('--sweep_config', type = str, default = None, help = 'name of the sweep_config file, contained in the configs folder (include extention .yaml)' )
 
-    #saving model
+    #saving checkpoints
     parser.add_argument('--name_checkpoint_to_save', type = str, default = None, help='chose a name for the checkpoint you want to save, omit to avoid saving the checkpoint (include extention .pth.tar)')
     parser.add_argument('--checkpoint_to_load', type = str, default=None, help='write the name of the checkpoint to be loaded, otherwise leave default')
 

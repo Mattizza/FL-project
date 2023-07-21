@@ -202,18 +202,6 @@ class Client:
         if self.args.framework == 'centralized':
             print(self.optimizer)
     
-    def new_set_opt(self, config):
-        if config.get('optimizer') =='Adam':
-            self.optimizer = optim.Adam(self.model.parameters(), lr = config.get('learning_rate') , weight_decay = config.get('weight_decay'))
-        
-        elif config.get('optimizer') == 'SGD':
-            self.optimizer = optim.SGD(self.model.parameters(), lr = config.get('learning_rate') , momentum = config.get('momentum'),weight_decay = config.get('weight_decay'))
-        
-        elif config.get('optimizer') == 'Adagrad':
-            self.optimizer = optim.Adagrad(self.model.parameters(), lr = config.get('learning_rate') , weight_decay = config.get('weight_decay'))
-        
-        print(self.optimizer)
-    
     def set_scheduler(self, config):
         """
             Creates a scheduler with the parameters contained in config. Also discard the useless settings.
@@ -232,37 +220,110 @@ class Client:
                 print('Scheduler:\n',type(self.scheduler),"\n", self.scheduler.state_dict())
             else:
                 print("No scheduler")
-    
-    def new_set_scheduler(self, config):
-        if config.get('scheduler') == 'ConstantLR':
-            self.scheduler = lr_scheduler.ConstantLR(self.optimizer, factor = config.get('factor'))
-        
-        elif config.get('scheduler') == 'ExponentialLR':
-            self.scheduler = lr_scheduler.ExponentialLR(self.optimizer, gamma = config.get('gamma'))
-
-        elif config.get('scheduler') == 'StepLR':
-            self.scheduler = lr_scheduler.StepLR(self.optimizer, step_size = 2 , gamma = config.get('gamma'))
-        elif config.get('scheduler') == None:
-            self.scheduler = None
-            
-
-        if config.get('scheduler') != None:
-            print('\n Scheduler:\n',type(self.scheduler),"\n", self.scheduler.state_dict())
-        else:
-            print("\nNo scheduler")
-
-
 
     def  create_opt_sch(self, config: dict):
         """
             Simply call the method to create the optimizer and the scheduler
         """
         #il file config che riceve deve essere un dizionario con chiavi esterne "optimizer" e "scheduler"
-        #nel se usi config = wand.config viene automaticamente fatto in questo modo 
+        #se usi config = wand.config viene automaticamente fatto in questo modo 
         self.set_optimizer(config)
         self.set_scheduler(config)
 
+    def generate_update(self):
+        return copy.deepcopy(self.model.state_dict())
 
+    def train(self, n_steps=10):
+        '''
+        This method locally trains the model with the dataset of the client. It handles the training at epochs level
+        (by calling the run_epoch method for each local epoch of training)
+        :return: length of the local dataset, copy of the model parameters
+        '''
+
+        self.model.train()
+
+        # Training loop. We initialize some empty lists because we need to store the information about the statistics computed
+        # on the mini-batches.
+        self.n_total_steps = len(self.train_loader)
+        self.mean_loss = []
+        self.mean_std  = []
+        self.n_10th_steps = []
+        self.n_epoch_steps = [self.n_total_steps]
+        self.count = 0
+
+       
+        num_train_samples = len(self.train_dataset)
+
+        # We iterate over the epochs.
+        for epoch in range(self.args.num_epochs):
+            
+            # wandb
+            if self.args.wandb != None and self.args.framework == 'centralized':
+                    wandb.log({"lr": self.optimizer.param_groups[0]['lr']})
+            
+            if self.args.self_train == 'true':
+                avg_loss = self.run_epoch_self_train(epoch, n_steps)
+            else:
+                avg_loss = self.run_epoch(epoch, n_steps)
+
+            #if there is a scheduler do a step at each epoch
+            if self.scheduler != None:
+                if isinstance(self.scheduler, lr_scheduler.ReduceLROnPlateau):
+                    self.scheduler.step(avg_loss)
+                    print("Reduce On Plateau Scheduler, lr:", self.optimizer.param_groups[0]['lr'])
+                else:
+                    self.scheduler.step()
+                    print("Altro Scheduler, lr:", self.optimizer.param_groups[0]['lr'])
+                
+            # wandb
+            if self.args.wandb != None and self.args.framework == 'centralized':
+                wandb.log({"loss": avg_loss, "epoch": epoch})
+            
+            # Here we are simply computing how many steps do we need to complete an epoch.
+            self.n_epoch_steps.append(self.n_epoch_steps[0] * (epoch + 1))
+
+        update = self.generate_update()
+        
+        return num_train_samples, update, avg_loss
+
+
+
+    def test(self, metric):
+        """
+        This method tests the model on the local dataset of the client.
+        :param metric: StreamMetric object
+        """
+        self.model.eval()
+        with torch.no_grad():
+            for i, (images, labels) in enumerate(tqdm(self.test_loader)):
+                images = images.to(self.device) 
+                labels = labels.to(self.device)
+                outputs = self._get_outputs(images)
+                self.updatemetric(metric, outputs, labels)
+   
+    
+    def checkImageAndPrediction(self, ix, alpha = 0.4):
+        """
+        This method plot the image and the predicted mask.
+        :param int ix: index of the image in self.dataset
+        :param float alpha: transparency index
+        """
+        self.model.eval()
+        with torch.no_grad():
+            img = self.train_dataset[ix][0].cuda()
+            outputLogit = self.model(img.view(1, 3, 512, 928))['out'][0]
+            prediction = outputLogit.argmax(0)
+            label2color = Label2Color(idda_16_cmap())
+            pred_mask = label2color(prediction.cpu()).astype(np.uint8)
+            plt.imshow(unNormalize(img.cpu()).permute(1,2,0))
+            plt.imshow(pred_mask, alpha = alpha)
+
+    # Method used to extract avg style
+    def extract_avg_style(self, b):
+        self.avg_style, self.win_sizes = self.style_extractor.extract_avg_style(b=b)
+        return self.avg_style, self.win_sizes, self.name
+    
+    
     def print_learning(self, step: int, plot_error = False) -> None:
         '''
         Function used to print the learning curves.
@@ -304,128 +365,3 @@ class Client:
         [cap.set_alpha(0.3 * plot_error) for cap in caps]
 
         plt.show()
-
-    def generate_update(self):
-        return copy.deepcopy(self.model.state_dict())
-
-    def train(self, n_steps=10):
-        '''
-        This method locally trains the model with the dataset of the client. It handles the training at epochs level
-        (by calling the run_epoch method for each local epoch of training)
-        :return: length of the local dataset, copy of the model parameters
-        '''
-
-        self.model.train()
-
-        # Training loop. We initialize some empty lists because we need to store the information about the statistics computed
-        # on the mini-batches.
-        self.n_total_steps = len(self.train_loader)
-        self.mean_loss = []
-        self.mean_std  = []
-        self.n_10th_steps = []
-        self.n_epoch_steps = [self.n_total_steps]
-        self.count = 0
-
-       
-        num_train_samples = len(self.train_dataset)
-        
-        #initialize with highest possible number to keep track of the lowest loss
-        min_loss = float("inf") 
-
-        # We iterate over the epochs.
-        for epoch in range(self.args.num_epochs):
-            
-            # wandb
-            if self.args.wandb != None and self.args.framework == 'centralized':
-                    wandb.log({"lr": self.optimizer.param_groups[0]['lr']})
-            
-            if self.args.self_train == 'true':
-                avg_loss = self.run_epoch_self_train(epoch, n_steps)
-            else:
-                avg_loss = self.run_epoch(epoch, n_steps)
-            
-            # ==== Saving the model if in centralized framework ====
-            
-            #compare current epoch avg_loss with the overall min_loss
-            if avg_loss < min_loss and self.args.framework == 'centralized' and self.args.name_checkpoint_to_save != None:
-                min_loss = avg_loss
-                self.save_model_opt_sch(epoch)
-
-            #if there is a scheduler do a step at each epoch
-            if self.scheduler != None:
-                if isinstance(self.scheduler, lr_scheduler.ReduceLROnPlateau):
-                    self.scheduler.step(avg_loss)
-                    print("Reduce On Plateau Scheduler, lr:", self.optimizer.param_groups[0]['lr'])
-                else:
-                    self.scheduler.step()
-                    print("Altro Scheduler, lr:", self.optimizer.param_groups[0]['lr'])
-                
-            # wandb
-            if self.args.wandb != None and self.args.framework == 'centralized':
-                wandb.log({"loss": avg_loss, "epoch": epoch})
-            
-            # Here we are simply computing how many steps do we need to complete an epoch.
-            self.n_epoch_steps.append(self.n_epoch_steps[0] * (epoch + 1))
-
-        update = self.generate_update()
-        
-        return num_train_samples, update, avg_loss
-
-
-
-    #i dati vengono testati sugli stessi dati di training incluse le transforms
-    def test(self, metric):
-        """
-        This method tests the model on the local dataset of the client.
-        :param metric: StreamMetric object
-        """
-        self.model.eval()
-        with torch.no_grad():
-            for i, (images, labels) in enumerate(tqdm(self.test_loader)):
-                images = images.to(self.device) 
-                labels = labels.to(self.device)
-                outputs = self._get_outputs(images)
-                self.updatemetric(metric, outputs, labels)
-   
-    
-    def checkImageAndPrediction(self, ix, alpha = 0.4):
-        """
-        This method plot the image and the predicted mask.
-        :param int ix: index of the image in self.dataset
-        :param float alpha: transparency index
-        """
-        self.model.eval()
-        with torch.no_grad():
-            img = self.train_dataset[ix][0].cuda()
-            outputLogit = self.model(img.view(1, 3, 512, 928))['out'][0]
-            prediction = outputLogit.argmax(0)
-            label2color = Label2Color(idda_16_cmap())
-            pred_mask = label2color(prediction.cpu()).astype(np.uint8)
-            plt.imshow(unNormalize(img.cpu()).permute(1,2,0))
-            plt.imshow(pred_mask, alpha = alpha)
-    
-    def save_model_opt_sch(self, epochs = None):
-        
-        state = {"model_state": self.model.state_dict(), "epoch": epochs+1}
-
-        #! magari in seguito aggiungi anche lo stato dell'optimizer e dello scheduler
-        #"optimizer_state": self.optimizer.state_dict(),
-        #"scheduler_state": self.scheduler.state_dict()}
-
-        #! creare una funzione per definire nomi dei path personalizzati in base a optimizer, numero epoche etc
-        #customPath = definePath(self.args)
-        customPath = 'firstTry.pth.tar'
-        root = 'savedModels'
-        path = os.path.join(root, customPath)
-        torch.save(state, path)
-        
-        print('Client saved checkpoint at ', path)
-    
-
-#####################
-#Altro metodo per estrarre gli stili
-
-    def extract_avg_style(self, b):
-        self.avg_style, self.win_sizes = self.style_extractor.extract_avg_style(b=b)
-        return self.avg_style, self.win_sizes, self.name
-    
