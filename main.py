@@ -356,7 +356,6 @@ def sweep_train(args, config = None):
         server.eval_train()
         server.test()
 
-#TODO: funzione da testare
 def sweep_train_DA(args, config = None):
     
     with wandb.init(config = config):
