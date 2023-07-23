@@ -11,12 +11,14 @@ from tqdm import tqdm
 
 class Server:
 
-    def __init__(self, args, train_clients, test_clients, model, metrics):
+    def __init__(self, args, train_clients, test_clients, model, metrics, config):
         self.args = args
         self.train_clients = train_clients #lista con un solo elemento (istanza della classe client (test_client = False))
         self.test_clients = test_clients #lista con due elementi (istanza della classe client (test_client = True))
         #self.selected_clients = [] #client che vengono selezionati ad ogni round
         self.model = model #da passare poi al client
+
+        self.config = config
         
         # ==== Loading the checkpoint if enabled====
         if self.args.checkpoint_to_load != None:
@@ -47,13 +49,14 @@ class Server:
         num_clients = min(self.args.clients_per_round, len(self.train_clients))
         return np.random.choice(self.train_clients, num_clients, replace=False)
     
-    def distribute_config_dict(self, config: dict):
+    #! Metodo commentato perchè si crea un optimizer ogni volta che viene chiamato un client
+    #def distribute_config_dict(self, config: dict):
         """
             This method iterates over each train client and creates in each of them and optimizer and
             a scheduler according to the configuration contained in config 
         """
-        for c in self.train_clients:
-            c.create_opt_sch(config)
+        #for c in self.train_clients:
+            #c.create_opt_sch(config)
 
 
     def train_round(self):
@@ -71,9 +74,11 @@ class Server:
         for i, client in enumerate(self.select_clients()):
             print(client.name)
             self.load_server_model_on_client(client)
+            
             if self.args.self_train == 'true':
                 client.self_train_loss.set_teacher(self.teacher_model)#passa in teacher model alla loss del client
-            num_samples, update , avg_loss= client.train()
+            
+            num_samples, update , avg_loss= client.train(self.config)
 
             #client_update = copy.deepcopy(client.model.state_dict())
             updates.append((num_samples, update))
@@ -118,7 +123,9 @@ class Server:
     
     def update_model(self, updates):
         #chiama aggregate() che restituisce new_state_dict
-        self.model_params_dict = self._aggregate(updates)
+        new_model_parmas = self._aggregate(updates)
+        self.model.load_state_dict(new_model_parmas)
+        self.model_params_dict = copy.deepcopy(self.model.state_dict())
 
 
     def train(self):
@@ -136,7 +143,7 @@ class Server:
             wandb.log({"Num. local epochs": self.args.num_epochs}, commit = False)
             wandb.log({"Num. rounds": self.args.num_rounds}, commit = False)
 
-        round_min_loss = float('inf')
+        #round_min_loss = float('inf')
         
         #Penso sia superfluo perchè il teacher model è già allenato
         """if self.args.self_train == "true" and self.args.T == None:
@@ -153,14 +160,7 @@ class Server:
 
             updates, round_avg_loss = self.train_round() #crea un lista [(num_samples, model_state_dict),...,]           
             
-            new_model_parmas = self._aggregate(updates)
-            self.model.load_state_dict(new_model_parmas)
-            self.model_params_dict = copy.deepcopy(self.model.state_dict())
-
-            """# ==== Saving the checkpoint if in federated framework ====
-            if round_avg_loss < round_min_loss and self.args.framework == 'federated' and self.args.name_checkpoint_to_save != None:
-                round_min_loss = round_avg_loss
-                self.save_model_opt_sch(round+1)"""
+            self.update_model(updates)
         
         #==== After the trainig save the checkpoint if enabled ====
         if self.args.name_checkpoint_to_save != None:

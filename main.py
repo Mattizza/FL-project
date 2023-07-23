@@ -63,6 +63,10 @@ def get_transforms(args):
     # TODO: test your data augmentation by changing the transforms here!
     if args.model == 'deeplabv3_mobilenetv2':
         train_transforms = sstr.Compose([
+            sstr.ColorJitter(brightness=0,
+                             contrast=0,
+                             saturation=0,
+                             hue=0.1),
             sstr.RandomResizedCrop((512, 928), scale=(0.5, 2.0)),
             sstr.ToTensor(),
             sstr.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
@@ -82,6 +86,8 @@ def get_transforms(args):
         ])
     else:
         raise NotImplementedError
+    print("Train transforms:", train_transforms)
+    print("\nTest transfroms:", test_transforms)
     return train_transforms, test_transforms
 
 
@@ -339,18 +345,16 @@ def sweep_train(args, config = None):
             train_datasets, test_train_datasets, test_datasets = get_datasets(args=args, train_transforms = train_transforms , test_transforms = test_transforms)
             train_clients, test_clients = gen_clients(args, train_datasets, test_train_datasets, test_datasets, model)
             metrics = set_metrics(args)
-            server = Server(args, train_clients, test_clients, model, metrics)
             path = 'configs/' + args.config
             configHyp = yaml_to_dict(path)
-            server.distribute_config_dict(configHyp)
+            server = Server(args, train_clients, test_clients, model, metrics, configHyp)
 
 
         elif args.wandb == 'hypTuning':
             train_datasets, test_train_datasets, test_datasets = get_datasets(args=args)
             train_clients, test_clients = gen_clients(args, train_datasets, test_train_datasets, test_datasets, model)
             metrics = set_metrics(args)
-            server = Server(args, train_clients, test_clients, model, metrics)
-            server.distribute_config_dict(config)
+            server = Server(args, train_clients, test_clients, model, metrics, config)
         
         server.train()
         server.eval_train()
@@ -456,8 +460,7 @@ def main():
             train_datasets, test_train_datasets, test_datasets = get_datasets(args)
             print('Done.')
             train_clients, test_clients = gen_clients(args, train_datasets, test_train_datasets, test_datasets, model)
-            server = Server(args, train_clients, test_clients, model, metrics)
-            server.distribute_config_dict(config)
+            server = Server(args, train_clients, test_clients, model, metrics, config)
             server.train()
             server.eval_train()
             server.test()

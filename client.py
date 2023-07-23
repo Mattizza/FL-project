@@ -50,9 +50,6 @@ class Client:
             self.criterion = nn.CrossEntropyLoss(ignore_index=255, reduction='none')
             self.reduction = HardNegativeMining() if self.args.hnm else MeanReduction()
 
-        self.optimizer = None
-        self.scheduler = None
-
         self.isTarget = isTarget
 
         if self.isTarget:
@@ -78,7 +75,7 @@ class Client:
             return self.model(images)
 
 
-    def run_epoch(self, cur_epoch, n_steps: int) -> None:
+    def run_epoch(self, cur_epoch, optimizer, n_steps: int) -> None:
         '''
         This method locally trains the model with the dataset of the client. It handles the training at mini-batch level.
             -) cur_epoch: current epoch of training;
@@ -101,9 +98,9 @@ class Client:
             
             loss = self.reduction(self.criterion(outputs,labels), labels)
             cumu_loss += loss.item()
-            self.optimizer.zero_grad()
+            optimizer.zero_grad()
             loss.backward()
-            self.optimizer.step()
+            optimizer.step()
             if self.args.wandb != None and self.args.framework == 'centralized':
                 wandb.log({"batch loss": loss.item()})
 
@@ -133,7 +130,7 @@ class Client:
         
         return cumu_loss /len(self.train_loader)
     
-
+    #TODO: funzione da correggere dopo il cambiamento di opt e sched creati on the fly
     def run_epoch_self_train(self, cur_epoch, n_steps):
         cumu_loss = 0
         print('Epoch', cur_epoch + 1)
@@ -181,13 +178,7 @@ class Client:
         
         return cumu_loss /len(self.train_loader)
 
-
-
-    #diz di prova
-    #config = {'optimizer': {'name':'Adam', 'settings':{'lr':0.01, 'momentum':0.5}},
-    #          'scheduler': {'name':'ConstantLR', 'settings':{'factor':0.5, 'gamma':0.5}}}
-    
-    def set_optimizer(self, config):
+    def _configure_optimizer(self, config):
         """
             Creates an optimizier with the parameters contained in config. Also discard the useless settings.
         """
@@ -198,11 +189,12 @@ class Client:
         valid_params_k = opt_signature.intersection(set(opt_config))
         valid_params_dict = {key: opt_config[key] for key in valid_params_k}
         
-        self.optimizer = opt_method(self.model.parameters(), **valid_params_dict)
+        optimizer = opt_method(self.model.parameters(), **valid_params_dict)
         if self.args.framework == 'centralized':
-            print(self.optimizer)
+            print(optimizer)
+        return optimizer
     
-    def set_scheduler(self, config):
+    def _configure_scheduler(self, config, optimizer):
         """
             Creates a scheduler with the parameters contained in config. Also discard the useless settings.
         """
@@ -213,27 +205,30 @@ class Client:
             sch_signature  = set(signature(sch_method).parameters.keys())
             valid_params_k = sch_signature.intersection(set(sch_config))
             valid_params_dict = {key: sch_config[key] for key in valid_params_k}
-            self.scheduler = sch_method(self.optimizer, **valid_params_dict)
-        
-        if self.args.framework == 'centralized':
-            if sch_name != 'None':
-                print('Scheduler:\n',type(self.scheduler),"\n", self.scheduler.state_dict())
-            else:
-                print("No scheduler")
+            scheduler = sch_method(optimizer, **valid_params_dict)
+            if self.args.framework == 'centralized':
+                print('Scheduler:\n',type(scheduler),"\n", scheduler.state_dict())
+        else:
+            scheduler = None
+            if self.args.framework == 'centralized':
+                 print("No scheduler")
 
-    def  create_opt_sch(self, config: dict):
+        return scheduler
+    
+    def  configure_opt_sch(self, config: dict):
         """
             Simply call the method to create the optimizer and the scheduler
         """
         #il file config che riceve deve essere un dizionario con chiavi esterne "optimizer" e "scheduler"
-        #se usi config = wand.config viene automaticamente fatto in questo modo 
-        self.set_optimizer(config)
-        self.set_scheduler(config)
+        #nel se usi config = wand.config viene automaticamente fatto in questo modo 
+        optimizer = self._configure_optimizer(config)
+        scheduler = self._configure_scheduler(config, optimizer)
+        return optimizer, scheduler
 
     def generate_update(self):
         return copy.deepcopy(self.model.state_dict())
 
-    def train(self, n_steps=10):
+    def train(self, config, n_steps=10):
         '''
         This method locally trains the model with the dataset of the client. It handles the training at epochs level
         (by calling the run_epoch method for each local epoch of training)
@@ -241,6 +236,9 @@ class Client:
         '''
 
         self.model.train()
+
+        optimizer, scheduler = self.configure_opt_sch(config) #Create optimizer and scheduler
+
 
         # Training loop. We initialize some empty lists because we need to store the information about the statistics computed
         # on the mini-batches.
@@ -259,21 +257,21 @@ class Client:
             
             # wandb
             if self.args.wandb != None and self.args.framework == 'centralized':
-                    wandb.log({"lr": self.optimizer.param_groups[0]['lr']})
+                    wandb.log({"lr": optimizer.param_groups[0]['lr']})
             
             if self.args.self_train == 'true':
                 avg_loss = self.run_epoch_self_train(epoch, n_steps)
             else:
-                avg_loss = self.run_epoch(epoch, n_steps)
+                avg_loss = self.run_epoch(epoch, optimizer, n_steps)
 
             #if there is a scheduler do a step at each epoch
-            if self.scheduler != None:
-                if isinstance(self.scheduler, lr_scheduler.ReduceLROnPlateau):
-                    self.scheduler.step(avg_loss)
-                    print("Reduce On Plateau Scheduler, lr:", self.optimizer.param_groups[0]['lr'])
+            if scheduler != None:
+                if isinstance(scheduler, lr_scheduler.ReduceLROnPlateau):
+                    scheduler.step(avg_loss)
+                    print("Reduce On Plateau Scheduler, lr:", optimizer.param_groups[0]['lr'])
                 else:
-                    self.scheduler.step()
-                    print("Altro Scheduler, lr:", self.optimizer.param_groups[0]['lr'])
+                    scheduler.step()
+                    print("Altro Scheduler, lr:", optimizer.param_groups[0]['lr'])
                 
             # wandb
             if self.args.wandb != None and self.args.framework == 'centralized':
