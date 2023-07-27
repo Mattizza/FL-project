@@ -263,7 +263,7 @@ class ServerGTA:
 
         metric = self.metrics['idda_test']
         metric.reset()
-        print(f"Evaluating on the train set of Idda")
+        print(f"\nEvaluating on the train set of Idda")
         client = self.test_clients[0]
         self.load_server_model_on_client(client)
         client.test(metric)

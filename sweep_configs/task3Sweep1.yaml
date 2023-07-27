@@ -2,7 +2,7 @@ method : random
 
 metric:
   name: idda_train_miou
-  goal: maximise
+  goal: maximize
 
 parameters:
   optimizer:
