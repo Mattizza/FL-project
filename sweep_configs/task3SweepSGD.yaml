@@ -21,7 +21,7 @@ parameters:
   scheduler:
     parameters:
       name:
-        value: [None, "ReduceLROnPlateau", "MultiStepLR"]
+        values: [None, "ReduceLROnPlateau", "MultiStepLR"]
       
       milestones: #MultiStepLR
         value: [15, 20, 25]

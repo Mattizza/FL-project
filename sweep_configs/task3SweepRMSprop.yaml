@@ -21,7 +21,7 @@ parameters:
   scheduler:
     parameters:
       name:
-        value: [None, "ReduceLROnPlateau"]
+        values: [None, "ReduceLROnPlateau"]
 
       patience: #ReduceLROnPlateau
         value: 3
