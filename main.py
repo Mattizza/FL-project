@@ -169,7 +169,7 @@ def get_datasets_DA(args, train_transforms = None, test_transforms = None):
     
     idda_root = 'data/idda'
 
-    #Create the idda_clients_datasets
+    #Create the idda_clients_datasets, these dataset are used just to extract the style of the client
     idda_clients_datasets = []
     with open(os.path.join(idda_root, 'train.json'), 'r') as f:
             all_data = json.load(f)
@@ -375,7 +375,7 @@ def sweep_train_DA(args, config = None):
             train_transforms, test_transforms = get_sweep_transforms(args, transformConfig)
             print(train_transforms)
             print(test_transforms)
-            train_dataset, idda_clients_datasets, test_datasets = get_datasets_DA(train_transforms = train_transforms , test_transforms = test_transforms)
+            train_dataset, idda_clients_datasets, test_datasets = get_datasets_DA(args=args, train_transforms = train_transforms , test_transforms = test_transforms)
             path = 'configs/' + args.config
             configHyp = yaml_to_dict(path)
 
@@ -448,7 +448,7 @@ def main():
                 server.load_styles()
                 server.apply_styles()
                 print('Done')
-                raise NotImplementedError
+                #raise NotImplementedError
 
             server.create_opt_sch(config=config)
             if args.checkpoint_to_load != None:
