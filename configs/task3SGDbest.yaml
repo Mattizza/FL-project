@@ -1,0 +1,6 @@
+optimizer:
+  name: SGD
+  lr: 0.047
+  momentum: 0.7
+scheduler:
+  name: None

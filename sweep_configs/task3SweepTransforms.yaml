@@ -1,0 +1,37 @@
+method : random
+
+metric:
+  name: idda_train_miou
+  goal: maximize
+
+parameters:
+
+  rndRot:
+    parameters:
+      active:
+        value: False
+      maxDeg:
+        value: 10
+  
+  rndHzFlip:
+    value: False
+
+  rndVertFlip:
+    value: False
+
+  colorJitter:
+    parameters:
+      active:
+        value: True
+
+      brightness:
+        values: [0, 0.2, 0.4, 0.6]
+
+      contrast:
+        values: [0, 0.2, 0.4, 0.6]
+      
+      saturation:
+        values: [0, 0.2, 0.4, 0.6]
+      
+      hue:
+        values: [0, 0.1, 0.25, 0.5]
