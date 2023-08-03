@@ -59,19 +59,20 @@ class StreamSegMetrics(Metrics):
 
     def __init__(self, n_classes, name):
         super().__init__(n_classes=n_classes, name=name)
-    """
-    Restituisce una confusion matrix sottoforma di array.
-    Sulla diagonale c'è il numero totale di pixel classificati correttamente
-    """
+    
     def _fast_hist(self, label_true, label_pred):
+        """
+        Restituisce una confusion matrix sottoforma di array.
+        Sulla diagonale c'è il numero totale di pixel classificati correttamente
+        """
         mask = (label_true >= 0) & (label_true < self.n_classes)
         hist = np.bincount(
             self.n_classes * label_true[mask].astype(int) + label_pred[mask],
             minlength=self.n_classes ** 2,
         ).reshape(self.n_classes, self.n_classes)
         return hist
-
-    def update(self, label_trues, label_preds):
+    
+    def update(self, label_trues, label_preds): #input must be  np.array
         """
         Funzione per aggiornare la confusion matrix alla fine di ogni batch
         input: label_trues = label_preds devono avere shape (batchSize, 512, 928)

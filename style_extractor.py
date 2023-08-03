@@ -3,7 +3,7 @@ from PIL import Image
 import cv2
 from tqdm import tqdm
 import torch
-from utils.utils import unNormalize
+from utils.utils import denormalize
 from torchvision.transforms.functional import to_pil_image
 class StyleExtractor:
 
@@ -93,7 +93,7 @@ class StyleExtractor:
         if b != None:
             self.b = b
         if isinstance(image, torch.Tensor):
-            pil_img = to_pil_image(unNormalize(image))
+            pil_img = to_pil_image(denormalize(image))
 
         else:
             pil_img = image

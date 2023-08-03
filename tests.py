@@ -130,3 +130,6 @@ class TestPseudolab():
         print(f"\tPerc agnostic pixels: {agnosticPxlPerc:.2f}")
 
         return metric
+    
+    def get_results():
+        pass

@@ -23,6 +23,8 @@ def get_parser():
 
     parser.add_argument('--framework', type=str, choices = ['centralized', 'federated'], required=True, help = 'Choose a centralized or a federated framework')
     parser.add_argument('--config', type=str, default='bestHypSameDom.yaml', help = 'name of the file containing the configuration, stored in the configs folder (include extention .yaml)')
+    parser.add_argument('--mode', type=str, default='train', help = 'Mode can be train or test')
+
     
     #Task 3
     parser.add_argument('--t', type=int, default=1, help='num. of epoch between each evaluation on target dataset.')
@@ -31,6 +33,13 @@ def get_parser():
     #Task 4
     parser.add_argument('--self_train', type=str, default='false', help = 'set true if you want to use self train loss.')
     parser.add_argument('--T', type=int, default=None, help='num. of round between each teacher model update.')
+
+    #Task 5
+    parser.add_argument('--our_self_train', type=str, default='false', help = 'Use our method for getting pseudolabels.')
+    parser.add_argument('--sigma', type=float, default=0, help = 'The relative weight of the entropy in the aggregation phase. If 0 uses fedavg aggregation')
+
+
+
 
     #wandb args
     parser.add_argument('--wandb', type = str, choices=[None, 'singleRun', 'hypTuning', 'transformTuning'], default= None, help='None: deactivate wandb, singleRun: track a single run with fixed parameters, hypTuning: do hyperparam tuning')

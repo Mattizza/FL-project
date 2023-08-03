@@ -4,6 +4,4 @@ optimizer:
   lr: 0.1
   momentum: 0.9
 scheduler:
-  name: PolynomialLR
-  power: 0.9
-  total_iters: 50
+  name: None
