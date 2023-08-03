@@ -2,7 +2,9 @@ import numpy as np
 from PIL import Image
 import cv2
 from tqdm import tqdm
-
+import torch
+from utils.utils import unNormalize
+from torchvision.transforms.functional import to_pil_image
 class StyleExtractor:
 
     def __init__(self, dataset):
@@ -84,3 +86,20 @@ class StyleExtractor:
             return self.sizes
         else:
             print("Error!")
+    
+    def extract_style_given_img(self, image, b, L = 0.1):
+        self.L = L
+        
+        if b != None:
+            self.b = b
+        if isinstance(image, torch.Tensor):
+            pil_img = to_pil_image(unNormalize(image))
+
+        else:
+            pil_img = image
+
+        preproc_image = self.preprocess(pil_img)
+        style = self._extract_style(preproc_image)
+        
+        return style
+
