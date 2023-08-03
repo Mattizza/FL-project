@@ -44,7 +44,7 @@ class ServerGTA:
         self.max_eval_miou = 0.0
         self.pretrain_actual_epochs = 0
 
-        self.b = 2
+        self.b = 1
         self.styleaug = StyleAugment(n_images_per_style = 25, b = self.b )
         self.style_applier = StyleApplier()
         
@@ -229,6 +229,9 @@ class ServerGTA:
                     "eval_dataset" : type(self.test_clients[0].test_dataset).__name__,
                     "mious": self.mious,
                     "train_dataset": type(self.source_dataset).__name__}
+        if self.args.fda == 'true':
+             checkpoint["bankOfStyles"] = self.get_styles_bank_as_dict()
+             checkpoint["winSize"] = self.get_window_sizes() #TODO controlla se servono davvero
 
         root1 = 'checkpoints'
         root2 = 'gta'
@@ -363,16 +366,18 @@ class ServerGTA:
         #il server ordina al client di estrarre e di passargli avg_style
         #lo stile viene caricato nella banca degli stili dello style_applier
         
-        #!for target_client in self.target_clients:
-        #!    client_style, win_sizes, styles_name = target_client.extract_avg_style() 
-        #!    self.style_applier.add_style_to_bank(client_style, styles_name)
-        #!    if self.style_applier.sizes == None:
-        #!        self.style_applier.set_win_sizes(win_sizes)
-
-        client_style, win_sizes, styles_name = self.target_clients[3].extract_avg_style(b = self.b)
-        self.style_applier.add_style_to_bank(client_style, styles_name)
-        if self.style_applier.sizes == None:
-            self.style_applier.set_win_sizes(win_sizes)
+        for target_client in self.target_clients:
+            client_style, win_sizes, styles_name = target_client.extract_avg_style(b = self.b) 
+            self.style_applier.add_style_to_bank(client_style, styles_name)
+            if self.style_applier.sizes == None:
+                self.style_applier.set_win_sizes(win_sizes)
 
     def apply_styles(self):
-        self.source_dataset.set_style_tf_fn(self.style_applier.apply_style)   
+        self.source_dataset.set_style_tf_fn(self.style_applier.apply_style)
+
+    def get_styles_mapping(self):
+        return {"style": self.style_applier.styles_bank, "id": self.style_applier.styles_names}
+    
+    def get_window_sizes(self):
+        return self.style_applier.sizes
+    
