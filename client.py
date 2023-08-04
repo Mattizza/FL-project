@@ -7,7 +7,7 @@ from collections import defaultdict
 from torch.utils.data import DataLoader
 from utils.data_utils import idda_16_cmap, Label2Color
 
-from utils.utils import HardNegativeMining, MeanReduction, unNormalize, SelfTrainingLoss
+from utils.utils import HardNegativeMining, MeanReduction, denormalize, SelfTrainingLoss
 import os
 import matplotlib.pyplot as plt
 from torch.optim import lr_scheduler
@@ -16,6 +16,8 @@ from matplotlib.patches import Rectangle
 import wandb
 from inspect import signature
 from tqdm import tqdm
+import torch.nn.functional as F
+import scipy
 
 from style_extractor import StyleExtractor
 
@@ -52,12 +54,17 @@ class Client:
 
         self.isTarget = isTarget
 
+        #Task 3.2
         if self.isTarget:
             self.avg_style = None
             self.win_sizes = None
             self.style_extractor = StyleExtractor(self.test_dataset)
-        
 
+        #Task 5
+        self.cluster_id = None
+        self.entropy_last_epoch = None
+        self.loss_last_epoch = None
+        
     @staticmethod
     def updatemetric(metric, outputs, labels):
         _ , prediction = outputs.max(dim=1)
@@ -83,6 +90,7 @@ class Client:
         '''
         cumu_loss = 0
         print('Epoch', cur_epoch + 1)
+        tot_entropies = np.array([])
         for cur_step, (images, labels) in enumerate(self.train_loader):
                 
             # Total steps needed to complete an epoch. Computed as:
@@ -94,13 +102,23 @@ class Client:
 
             images = images.to(self.device, dtype = torch.float32) 
             labels = labels.to(self.device, dtype = torch.long)
-            outputs = self._get_outputs(images)
+            outputs = self._get_outputs(images) #dim = [bs, 16, h, w]
             
             loss = self.reduction(self.criterion(outputs,labels), labels)
             cumu_loss += loss.item()
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+
+            #Task 5
+            if cur_epoch == self.args.num_epochs-1 and self.args.use_entropy == 'true':
+                #Turn logits into probs
+                probs = F.softmax(outputs, dim=1) #dim = [bs, 16, h, w]
+                batch_entropies = scipy.stats.entropy(probs.cpu().detach().numpy(), axis = 1).reshape(probs.shape[0] ,-1).mean(axis = 1) #dim = [bs,]
+                tot_entropies = np.concatenate((tot_entropies, batch_entropies))
+                self.entropy_last_epoch = tot_entropies.mean()
+                self.loss_last_epoch = cumu_loss /len(self.train_loader)
+
             if self.args.wandb != None and self.args.framework == 'centralized':
                 wandb.log({"batch loss": loss.item()})
 
@@ -313,13 +331,18 @@ class Client:
             prediction = outputLogit.argmax(0)
             label2color = Label2Color(idda_16_cmap())
             pred_mask = label2color(prediction.cpu()).astype(np.uint8)
-            plt.imshow(unNormalize(img.cpu()).permute(1,2,0))
+            plt.imshow(denormalize(img.cpu()).permute(1,2,0))
             plt.imshow(pred_mask, alpha = alpha)
 
     # Method used to extract avg style
     def extract_avg_style(self, b):
         self.avg_style, self.win_sizes = self.style_extractor.extract_avg_style(b=b)
         return self.avg_style, self.win_sizes, self.name
+    
+    #Method used to extract the style of a single image
+    def extract_single_img_style(self, ix, b):
+        style = self.style_extractor.extract_style_given_img(ix = ix, b = b)
+        return style
     
     
     def print_learning(self, step: int, plot_error = False) -> None:
@@ -363,3 +386,15 @@ class Client:
         [cap.set_alpha(0.3 * plot_error) for cap in caps]
 
         plt.show()
+
+    def set_teacherModel(self, teacherModel, dataloader = True):
+        self.teacherModel = teacherModel
+        if dataloader:
+            self.train_dataset.set_teacherModel(teacherModel)
+
+        print("Teacher model acquired")
+    
+    def get_entropy_dict(self):
+        return {'loss' : self.loss_last_epoch,
+                'cluster': self.cluster_id,
+                'entropy': self.entropy_last_epoch}
