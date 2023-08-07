@@ -1,4 +1,4 @@
-method : grid
+method : random
 
 metric:
   name: loss
@@ -11,27 +11,27 @@ parameters:
       active:
         value: False
       maxDeg:
-        values: [0, 6]
+        value: 10
   
   rndHzFlip:
     value: False
 
   rndVertFlip:
-    value: True
+    value: False
 
   colorJitter:
     parameters:
       active:
-        value: False
+        value: True
 
       brightness:
-        values: [0, 0.1]
+        values: [0, 0.2, 0.4, 0.6]
 
       contrast:
-        value: 0
+        values: [0, 0.2, 0.4, 0.6]
       
       saturation:
-        value: 0
+        values: [0, 0.2, 0.4, 0.6]
       
       hue:
-        value: 0
+        values: [0, 0.1, 0.25, 0.5]
