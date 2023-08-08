@@ -8,6 +8,7 @@ import wandb
 import os
 import sys
 from tqdm import tqdm
+from client_selector import ClientSelector
 
 class Server:
 
@@ -22,7 +23,7 @@ class Server:
         
         # ==== Loading the checkpoint if enabled====
         if self.args.checkpoint_to_load != None:
-            if self.args.self_train == 'true': #load a model trained on source dataset
+            if self.args.self_train == 'true' or self.args.our_self_train: #load a model trained on source dataset
                 self.load_source_trained_model()
             else:
                 self.load_model_to_test_results() #load a model to test the performances
@@ -35,7 +36,7 @@ class Server:
         elif args.dataset == 'gta5':
             self.mious = {'eval_train': [], 'idda_test':[], "test_same_dom":[], "test_diff_dom":[]}
         
-        
+        self.client_selector_custom = ClientSelector(self.train_clients)
 
         #Task 4
         #
@@ -43,11 +44,60 @@ class Server:
             if self.args.checkpoint_to_load == None:
                 sys.exit('An error occurred: you must specify a checkpoint to load if in self_train mode!')
             self.teacher_model = model #creo un teacher model allenato
-            
+        
+        if self.args.our_self_train == 'true':
+            if self.args.checkpoint_to_load == None:
+                sys.exit('An error occurred: you must specify a checkpoint to load if in self_train mode!')
+            self.teacher_model = model #creo un teacher model allenato
+        
+        #Task 5
+        #
+        """if self.args.framework == 'federated':
+            self.aggregator = Aggregator(self.args.sigma)"""
+        
+        self.isFirstRound = True
+        self.clients_entropy = {}
+        self.clients_num_samples = {}
 
+            
     def select_clients(self):
         num_clients = min(self.args.clients_per_round, len(self.train_clients))
-        return np.random.choice(self.train_clients, num_clients, replace=False)
+        
+        if self.args.custom_client_selection == 'true':
+            print("\nIn custom client selection") #Debugging puropses
+            if self.isFirstRound:
+                self.isFirstRound = False
+                p = None #uniform
+                print("\nprobs",p)
+                print()
+            else:
+                
+                #Questi due dizionari contengono solo i valori per i client selezionati il round prima oppure di tutti i clients? Sì
+                #Questi dizionari dovrebbe resettarsi alla fine di ogni round prima di prendere i nuovi valori? Sì
+
+                """clients_entropy[client.name] = {'loss': avg_loss,
+                                                'cluster': client.cluster_id,
+                                                'entropy': client.entropy_last_epoch,
+                                                }
+                clients_num_samples[client.name] = num_samples"""
+
+                print(f"\n\nentropies: {self.clients_entropy}\n")
+
+                p = self.client_selector_custom.compute_probs(self.clients_entropy, self.clients_num_samples)
+                
+                #resetti i dizionari ad ogni round
+                print('resetting dict')#debug
+                self.clients_entropy = {}
+                self.clients_num_samples = {} 
+                for i, c in enumerate(self.train_clients):
+                    print(f"{c.name}: {p[i]:.4f}")
+                print()
+        else: #uniform case
+            p = None
+
+        choosen_clients = np.random.choice(self.train_clients, num_clients, replace=False, p = p)
+
+        return choosen_clients
     
     #! Metodo commentato perchè si crea un optimizer ogni volta che viene chiamato un client
     #def distribute_config_dict(self, config: dict):
@@ -68,17 +118,30 @@ class Server:
         """
         Fa il train sul trainClient (train.txt)
         """
+
         num_samples_each_client = []
         updates = []
         avg_losses = []
+
         for i, client in enumerate(self.select_clients()):
+
             print(client.name)
             self.load_server_model_on_client(client)
             
             if self.args.self_train == 'true':
                 client.self_train_loss.set_teacher(self.teacher_model)#passa in teacher model alla loss del client
             
+            elif self.args.our_self_train == 'true':
+                client.set_teacherModel(self.teacher_model)
+            
             num_samples, update , avg_loss= client.train(self.config)
+
+            if self.args.use_entropy == 'true':
+                #print(client.name)
+                #print("entropies",client.get_entropy_dict())
+                #print("len",len(client.train_dataset))
+                self.clients_entropy[client.name] = client.get_entropy_dict()
+                self.clients_num_samples[client.name] = len(client.train_dataset)
 
             #client_update = copy.deepcopy(client.model.state_dict())
             updates.append((num_samples, update))
@@ -88,6 +151,62 @@ class Server:
         
         round_avg_loss = np.average(avg_losses, weights = num_samples_each_client)
 
+        #Wandb
+        if self.args.wandb != None and self.args.framework == 'federated':
+                wandb.log({"round loss": round_avg_loss})
+
+        return updates, round_avg_loss #update is a list of model.state_dict(), each one of a different client
+
+    def train_round_entropy(self):
+        """
+            This method trains the model with the dataset of the clients. It handles the training at single round level
+            :param clients: list of all the clients to train
+            :return: model updates gathered from the clients, to be aggregated
+        """
+        """
+        Fa il train sul trainClient (train.txt)
+        """
+        num_samples_each_client = []
+        updates = []
+        avg_losses = []
+
+        clients_entropy = {}
+        client_num_samples = {}
+        client_model = {}
+        for i, client in enumerate(self.select_clients()):
+            print(client.name)
+            self.load_server_model_on_client(client)
+            
+            if self.args.self_train == 'true':
+                client.self_train_loss.set_teacher(self.teacher_model)#passa in teacher model alla loss del client
+            
+            elif self.args.our_self_train == 'true':
+                client.set_teacherModel(self.teacher_model)
+            
+            num_samples, update , avg_loss= client.train(self.config)
+
+            #!
+            #self.clusters = {'T_0_A' : 0, 'T_1_E': 2}
+            
+            clients_entropy[client.name] = {'loss': avg_loss,
+                                            'cluster': client.cluster_id,
+                                            'entropy': client.entropy_last_epoch
+                                            }
+            client_num_samples[client.name] = num_samples
+
+            client_model[client.name] = update
+
+            clusters = np.unique(list(self.clusters.keys()))
+
+
+            num_samples_each_client.append(num_samples)
+            avg_losses.append(avg_loss)
+
+        
+        self._newAggregate(clients_entropy, client_num_samples, clusters, self.args.sigma, client_model)
+        round_avg_loss = np.average(avg_losses, weights = num_samples_each_client)
+
+        #Wandb
         if self.args.wandb != None and self.args.framework == 'federated':
                 wandb.log({"round loss": round_avg_loss})
 
@@ -107,7 +226,7 @@ class Server:
             base = OrderedDict()
 
             for (client_samples, client_model) in updates:
-                m_tot_samples += client_samples #numero totale di data points tra i clienti scelti 
+                m_tot_samples += client_samples #numero totale di data points tra i clienti scelti
 
                 for key, value in client_model.items():
                     if key in base:
@@ -120,7 +239,21 @@ class Server:
                     averaged_sol_n[key] = value.to('cuda') / m_tot_samples
             
             return averaged_sol_n #è un model_state_dict
+        
     
+    def _newAggregate(self, clients_entropy, client_num_samples, clusters, sigma, client_model):
+
+        if self.args.framework == 'federated':
+            averaged_sol_n = self.aggregator.aggregate(clients_entropy, client_num_samples, clusters, sigma, client_model)
+
+        return averaged_sol_n #è un model_state_dict
+
+
+
+            
+        
+    
+
     def update_model(self, updates):
         #chiama aggregate() che restituisce new_state_dict
         new_model_parmas = self._aggregate(updates)
@@ -149,7 +282,9 @@ class Server:
         """if self.args.self_train == "true" and self.args.T == None:
             self.teacher_model.load_state_dict(self.model_params_dict) #aggiorno il teacher model (lo rendo uguale a global model)
         """
- 
+
+        #check_list = [1,5,10] 
+        #i = 0
         for round in range(self.args.num_rounds):
             print(f'\nRound {round+1}\n')
 
@@ -161,6 +296,31 @@ class Server:
             updates, round_avg_loss = self.train_round() #crea un lista [(num_samples, model_state_dict),...,]           
             
             self.update_model(updates)
+        
+        """#Check performances every
+            if round+1 == check_list[i]:
+                if i < len(check_list)-1:
+                    i+=1
+                print("\nTesting model\n")
+                print("Model del server prima del test:", self.model.training)
+                print("Model di un train client random prima del test:", self.train_clients[8].model.training)
+                print("Model di un test client random prima del test:", self.test_clients[1].model.training)
+                
+                self.eval_train()
+                self.test()
+                print("Model del server dopo il test:", self.model.training)
+                print("Model di un train client random dopo il test:", self.train_clients[8].model.training)
+                print("Model di un test client random dopo il test:", self.test_clients[1].model.training)
+
+                self.model.train()
+
+                print("Model del server dopo mode train:", self.model.training)
+                print("Model di un train client random dopo mode train:", self.train_clients[8].model.training)
+                print("Model di un test client random dopo mode train:", self.test_clients[1].model.training)"""
+
+
+                
+                                
         
         #==== After the trainig save the checkpoint if enabled ====
         if self.args.name_checkpoint_to_save != None:
@@ -194,10 +354,12 @@ class Server:
             root1 = 'checkpoints'
             root2 = 'idda'
             path = os.path.join(root1, root2, self.args.name_checkpoint_to_save)
-            checkpoint = torch.load(path)
-            checkpoint['target_eval_miou'] = miou
-            torch.save(checkpoint, path)
-            print("\nAdded eval_miou in checkpoint\n")
+            if os.path.exists(path):
+                checkpoint = torch.load(path)
+                checkpoint['metrics_dict']['eval_train'] = metric
+                #checkpoint['target_eval_miou'] = miou
+                torch.save(checkpoint, path)
+                print("\nAdded eval_train metric in checkpoint\n")
 
         print(f'Mean IoU: {miou:.2%}')
         self.mious['eval_train'].append(miou)
@@ -209,6 +371,15 @@ class Server:
         Load the server model on each test client, reset the previously computed
         metrics, test the model on the test client's dataset
         """
+        #Se il checkpoint è abilitato ed esiste lo carico
+        checkpoint = None #inizializzo il checkpoint come non esistente
+        if self.args.name_checkpoint_to_save != None:
+            root1 = 'checkpoints'
+            root2 = 'idda'
+            path = os.path.join(root1, root2, self.args.name_checkpoint_to_save)
+            if os.path.exists(path): #Se il checkpoint esiste lo carico
+                    checkpoint = torch.load(path)
+
         for client in self.test_clients:
             print(f"Testing client {client.name}...")
             self.load_server_model_on_client(client)
@@ -216,8 +387,15 @@ class Server:
             metric.reset()
             client.test(metric)
             miou = metric.get_results()['Mean IoU']
+
+            if checkpoint != None:
+                checkpoint['metrics_dict'][client.name] = metric
+                torch.save(checkpoint, path)
+                print(f"\nAdded {client.name} metric in checkpoint\n")
+
             if self.args.wandb != None:
                 wandb.log({client.name : miou})
+
             print(f'Mean IoU: {miou:.2%}')
             self.mious[client.name].append(miou)
 
@@ -231,7 +409,8 @@ class Server:
         checkpoint = {"model_state": self.model.state_dict(),
                     "actual_epochs_executed": epochs,
                     "actual_rounds_executed": rounds,
-                    "target_eval_miou": None,
+                    "metrics_dict": {}, #these dicts will be filled with the metrics objects in the test() and eval_train() methods
+                    #"target_eval_miou": None, #TODO: qui salvare gli oggetti metrics invece di un singolo numero
                     "eval_dataset" : type(self.train_clients[0].test_dataset).__name__,
                     "train_dataset": type(self.test_clients[0].test_dataset).__name__}
         
@@ -249,16 +428,18 @@ class Server:
         root2 = 'idda'
         path = os.path.join(root1, root2, self.args.checkpoint_to_load)
         checkpoint = torch.load(path)
+        print(f"\n=> Loading the model trained on {checkpoint['train_dataset']}:")
         if self.args.framework == 'centralized':
-            print(f"\n=> Loading the model trained on {checkpoint['train_dataset']}:"
-                  f"\n - epochs executed: {checkpoint['actual_epochs_executed']}"
-                  f"\n - Target_eval_miou on {checkpoint['eval_dataset']}: {checkpoint['target_eval_miou']:.2%}\n")
-        elif self.args.frameworf == 'federated':
-            print(f"\n=> Loading the model trained on {checkpoint['train_dataset']}:"
-                  f"\n - local epochs executed: {checkpoint['actual_epochs_executed']}"
-                  f"\n - rounds executed: {checkpoint['actual_rounds_executed']}"
-                  f"\n - Target_eval_miou on {checkpoint['eval_dataset']}: {checkpoint['target_eval_miou']:.2%}\n")
+                  print(f"\n - epochs executed: {checkpoint['actual_epochs_executed']}")
 
+                  
+        elif self.args.framework == 'federated':
+                  print(f"\n - local epochs executed for each client for each round: {checkpoint['actual_epochs_executed']}"
+                        f"\n - rounds executed: {checkpoint['actual_rounds_executed']}")
+
+        print(f"\n - Eval_miou on {checkpoint['eval_dataset']}: {checkpoint['metrics_dict']['eval_train'].get_results()['Mean IoU']:.2%}"
+            f"\n - Test_same_Dom miou on {checkpoint['eval_dataset']}: {checkpoint['metrics_dict']['test_same_dom'].get_results()['Mean IoU']:.2%}"
+            f"\n - Test_Diff_Dom miou on {checkpoint['eval_dataset']}: {checkpoint['metrics_dict']['test_diff_dom'].get_results()['Mean IoU']:.2%}\n")
         self.model.load_state_dict(checkpoint['model_state'])
     
 
@@ -272,4 +453,10 @@ class Server:
                   f"\n - Target_eval_miou on {checkpoint['eval_dataset']}: {checkpoint['target_eval_miou']:.2%}\n")
         
         self.model.load_state_dict(checkpoint['model_state'])
+
+        if self.args.fda == 'true':
+            self.styles_mapping = checkpoint["styles_mapping"]
+            self.winSize = checkpoint["winSize"]
+    
+    
     
