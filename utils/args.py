@@ -37,8 +37,8 @@ def get_parser():
     #Task 5
     parser.add_argument('--our_self_train', type=str, default='false', help = 'Use our method for getting pseudolabels.')
     parser.add_argument('--sigma', type=float, default=0, help = 'The relative weight of the entropy in the aggregation phase. If 0 uses fedavg aggregation')
-
-
+    parser.add_argument('--use_entropy', type=str, default='false', help = 'set true if you need to use entropy.')
+    parser.add_argument('--custom_client_selection', type=str, default='false', help = 'set true to use custom client selection.')
 
 
     #wandb args
