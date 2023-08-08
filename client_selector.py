@@ -233,12 +233,15 @@ class ClientSelector():
             # Compute the probabilities.
             client_probs[client] += (self.alpha * client_img_weight_dict[client] + \
                                     self.beta  * client_entropy_weight_dict[client] + \
-                                    self.gamma * client_loss_weight_dict[client]) / len(client_entropy.keys()) * 1 / len(self.train_clients)
+                                    self.gamma * client_loss_weight_dict[client]) / (1/len(client_entropy.keys())) * (1 / len(self.train_clients))
             
+        print("\nclient_probs", client_probs)
         dict_p = {client.name: 1/len(self.train_clients) for client in self.train_clients}
 
         for client, prob in client_probs.items():
             dict_p[client] = prob
+
+        print("\nNew dict_p", dict_p)
         
         p_return = []
         for client in self.train_clients:

@@ -16,7 +16,7 @@ from sklearn.pipeline import Pipeline
 
 class ClusterMaker():
     def __init__(self, styles_mapping, clients) -> None:
-        self.styles_mapping = styles_mapping
+        self.styles_mapping = styles_mapping #{"style": styles, "id": self.server.styleaug.styles_names}
         self.cluster_mapping = {}
         self.k_means_model = None
         self.num_clusters = len(self.cluster_mapping.keys())
