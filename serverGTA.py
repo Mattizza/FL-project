@@ -198,15 +198,16 @@ class ServerGTA:
                 wandb.log({"loss": avg_loss, "epoch": epoch})
             
 
-            #Check the miou on idda_train every t epochs
+            #Check the miou on idda_train, same_dom, diff_dom every t epochs
             if actual_epochs_executed % self.t == 0 or actual_epochs_executed == (self.args.num_epochs):
-                eval_miou = self.eval_train()
-                self.model.train()
+                eval_miou = self.eval_train() #eval on idda_train
+                self.test() #test on the test_clients (idda_same_dom, idda_diff_dom)
+                self.model.train() #set the model back to train mode
 
                 # ==== Saving the model ====
                 #compare current eval_miou with the max_eval_miou
                 if eval_miou > self.max_eval_miou and self.args.name_checkpoint_to_save != None:
-                    self.max_eval_miou = eval_miou
+                    self.max_eval_miou = eval_miou #update max_eval_miou
                     self.save_checkpoint(eval_miou, actual_epochs_executed)
 
 
@@ -223,14 +224,17 @@ class ServerGTA:
 
         checkpoint = {"model_state": self.model.state_dict(),
                     "optimizer_state": self.optimizer.state_dict(),
-                    "scheduler_state": self.scheduler.state_dict(),
-                    "target_eval_miou": eval_miou,
+                    "target_eval_miou": eval_miou, #miou su idda_train
                     "actual_epochs_executed": actual_epochs_executed,
                     "eval_dataset" : type(self.test_clients[0].test_dataset).__name__,
-                    "mious": self.mious,
+                    "mious": self.mious, #all the calculated mious, for eval, diff_dom and same_dom
+                    "metrics": self.metrics, #these are the updated metrics
                     "train_dataset": type(self.source_dataset).__name__}
+        
+        checkpoint['scheduler_state'] = self.scheduler.state_dict() if self.scheduler != None else None     #manage the case when the scheduler is none
+
         if self.args.fda == 'true':
-             checkpoint["bankOfStyles"] = self.get_styles_bank_as_dict()
+             checkpoint["styles_mapping"] = self.get_styles_mapping()
              checkpoint["winSize"] = self.get_window_sizes() #TODO controlla se servono davvero
 
         root1 = 'checkpoints'
@@ -238,7 +242,7 @@ class ServerGTA:
         customPath = self.args.name_checkpoint_to_save
         path = os.path.join(root1, root2, customPath)
         torch.save(checkpoint, path)
-        print(f"=> Saving checkpoint at {path}.\nTarget_eval_miou: {eval_miou:.2%}\n")
+        print(f"=> Saving checkpoint at {path}.\n- Target_eval_miou: {eval_miou:.2%}\n- Test_same_dom: {self.mious['test_same_dom'][-1]:.2%}\n- Test_diff_dom: {self.mious['test_diff_dom'][-1]:.2%}\n")
         
     
     def load_checkpoint(self):
@@ -246,14 +250,17 @@ class ServerGTA:
         root2 = 'gta'
         path = os.path.join(root1, root2, self.args.checkpoint_to_load)
         checkpoint = torch.load(path)
-        print(f"\n=> Loading the model trained on {checkpoint['train_dataset']}:\n - epochs executed: {checkpoint['actual_epochs_executed']}\n - Target_eval_miou on {checkpoint['eval_dataset']}: {checkpoint['target_eval_miou']:.2%}\n")
+        #TODO: check the print
+        print(f"\n=> Loading the model trained on {checkpoint['train_dataset']}:\n - epochs executed: {checkpoint['actual_epochs_executed']}\n - Target_eval_miou on {checkpoint['eval_dataset']}: {checkpoint['target_eval_miou']:.2%}\n - Test_same_dom: {checkpoint['mious']['test_same_dom'][-1]:.2%}\n - Test_diff_dom: {checkpoint['mious']['test_diff_dom'][-1]:.2%}\n")
         self.model.load_state_dict(checkpoint['model_state'])
         self.optimizer.load_state_dict(checkpoint['optimizer_state'])
-        self.scheduler.load_state_dict(checkpoint['scheduler_state'])
+
+        self.scheduler.load_state_dict(checkpoint['scheduler_state']) if checkpoint['scheduler_state'] != None else None
+        
         self.max_eval_miou = checkpoint['target_eval_miou']
         self.pretrain_actual_epochs = checkpoint['actual_epochs_executed']
         self.mious = checkpoint['mious']
-
+        #self.metrics = checkpoint['metrics'] #per ora non viene usata da nessuna parte dopo che viene caricata
 
     def eval_train(self):
         """
@@ -283,8 +290,6 @@ class ServerGTA:
         return miou
      
         
-  
-
     def test(self):
         """
         This method handles the test on the test clients.
@@ -302,6 +307,7 @@ class ServerGTA:
                 wandb.log({client.name : miou})
             print(f'Mean IoU: {miou:.2%}')
             self.mious[client.name].append(miou)
+
 
 
     def load_server_model_on_client(self, client):
