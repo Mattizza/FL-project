@@ -57,36 +57,71 @@ def model_init(args):
         raise NotImplementedError
     raise NotImplementedError
 
-
-def get_transforms(args):
-    # TODO: test your data augmentation by changing the transforms here!
-    if args.model == 'deeplabv3_mobilenetv2':
-        train_transforms = sstr.Compose([
-            sstr.ColorJitter(brightness=0.5,
-                             contrast=0.2,
-                             saturation=0.6,
-                             hue=0.1),
+def getTrainTransformsFromYaml(transformConfig):
+    """
+        transformConfig: dict containing the configuration of the transforms.
+        Example: transformConfig = {'ColorJitter': {'brightness': 0.5, 'contrast': 0.2, 'saturation': 0.6, 'hue': 0.1}, 'RandomHorizontalFlip' : {'p' : 0.4}}
+    """
+    transfrom_functions = {
+        'ColorJitter': sstr.ColorJitter,
+        'RandomResizedCrop': sstr.RandomResizedCrop,
+        'RandomHorizontalFlip': sstr.RandomHorizontalFlip,
+        'RandomVerticalFlip': sstr.RandomVerticalFlip,
+        'RandomRotation': sstr.RandomRotation
+    }
+    customTransformsList = []
+    for k in transformConfig.keys():
+        transformClass = transfrom_functions[k]
+        params = transformConfig[k]
+        transform = transformClass(**params)
+        customTransformsList.append(transform)
+    
+    base_train_transforms = [
             sstr.RandomResizedCrop((512, 928), scale=(0.5, 2.0)),
             sstr.ToTensor(),
             sstr.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        ])
-        test_transforms = sstr.Compose([
-            sstr.ToTensor(),
-            sstr.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        ])
-    elif args.model == 'cnn' or args.model == 'resnet18':
-        train_transforms = nptr.Compose([
-            nptr.ToTensor(),
-            nptr.Normalize((0.5,), (0.5,)),
-        ])
-        test_transforms = nptr.Compose([
-            nptr.ToTensor(),
-            nptr.Normalize((0.5,), (0.5,)),
-        ])
+            ]
+    return sstr.Compose(customTransformsList + base_train_transforms)
+
+def get_transforms(args):
+    if args.transformConfig != None:
+        with open('transformConfigs/' + args.transformConfig, 'r') as f:
+            transformConfig = yaml.safe_load(f)
+            train_transforms = getTrainTransformsFromYaml(transformConfig)
+            test_transforms = sstr.Compose([
+                                            sstr.ToTensor(),
+                                            sstr.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+                                        ])
+    
     else:
-        raise NotImplementedError
-    print("Train transforms:", train_transforms)
-    print("\nTest transfroms:", test_transforms)
+        if args.model == 'deeplabv3_mobilenetv2':
+            train_transforms = sstr.Compose([
+                sstr.ColorJitter(brightness=0.5,
+                                contrast=0.2,
+                                saturation=0.6,
+                                hue=0.1),
+                sstr.RandomResizedCrop((512, 928), scale=(0.5, 2.0)),
+                sstr.ToTensor(),
+                sstr.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+            ])
+            test_transforms = sstr.Compose([
+                sstr.ToTensor(),
+                sstr.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+            ])
+        #elif args.model == 'cnn' or args.model == 'resnet18':
+        #    train_transforms = nptr.Compose([
+        #        nptr.ToTensor(),
+        #        nptr.Normalize((0.5,), (0.5,)),
+        #    ])
+        #    test_transforms = nptr.Compose([
+        #        nptr.ToTensor(),
+        #        nptr.Normalize((0.5,), (0.5,)),
+        #    ])
+        else:
+            raise NotImplementedError
+
+    #print("Train transforms:", train_transforms)
+    #print("\nTest transfroms:", test_transforms)
     return train_transforms, test_transforms
 
 
@@ -113,6 +148,9 @@ def get_datasets(args, train_transforms = None, test_transforms = None):
 
     if train_transforms == None or test_transforms == None:
         train_transforms, test_transforms = get_transforms(args)
+    
+    print("Train transforms:", train_transforms)
+    print("\nTest transfroms:", test_transforms)
 
     if args.dataset == 'idda':
         root = 'data/idda'
@@ -162,6 +200,9 @@ def get_datasets_DA(args, train_transforms = None, test_transforms = None):
     #Note: when in gta/DA framework we should apply the train_transforms to source_dataset (gta5), and test_transforms to target_datasets (idda)
     if train_transforms == None or test_transforms == None:
         train_transforms, test_transforms = get_transforms(args)
+    
+    print("Train transforms:", train_transforms)
+    print("\nTest transfroms:", test_transforms)
 
     #Create GTA5 dataset
     train_dataset = GTA5(transform=train_transforms, client_name = 'train_gta5', target_dataset='idda')
