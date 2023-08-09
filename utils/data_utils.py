@@ -1,5 +1,6 @@
 import numpy as np
-
+from utils.utils import denormalize
+import matplotlib.pyplot as plt
 
 def idda_16_cmap(n=256):
     color = [[128, 64, 128], #Road
@@ -31,3 +32,6 @@ class Label2Color(object):
 
     def __call__(self, lbls):
         return self.cmap[lbls]
+    
+def fromTensorNormImgToPlot(tensorImg):
+    plt.imshow(denormalize(tensorImg.cpu()).permute(1,2,0))

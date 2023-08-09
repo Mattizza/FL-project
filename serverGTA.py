@@ -18,6 +18,7 @@ import random
 
 from style_applier import StyleApplier
 
+
 class ServerGTA:
     def __init__(self, args, source_dataset, target_clients, test_clients, model, metrics):
         self.args = args
@@ -44,8 +45,9 @@ class ServerGTA:
         self.max_eval_miou = 0.0
         self.pretrain_actual_epochs = 0
 
-        self.b = 1
-        self.styleaug = StyleAugment(n_images_per_style = 25, b = self.b )
+        #Task 3.4
+        self.b = self.args.b #size of the window to apply FDA
+        #self.styleaug = StyleAugment(n_images_per_style = 25, b = self.b )
         self.style_applier = StyleApplier()
         
     def _get_outputs(self, images):
@@ -314,7 +316,7 @@ class ServerGTA:
         client.model = self.model #<- con questa passi proprio il modello
         #client.model.load_state_dict(copy.deepcopy(self.model.state_dict())) #<- con questa passi i parametri del modello
 
-    def extract_styles(self):
+    def extract_styles(self): #Metodo alernativo non più usato
         #extract just two styles for debbugging purposes
         target_client = self.target_clients[3]
         self.styleaug.add_style(target_client.test_dataset, name=target_client.name)
@@ -326,7 +328,7 @@ class ServerGTA:
         self.source_dataset.set_style_tf_fn(self.styleaug.apply_style)
 
     def compare_wo_w_style(self, ix = None):
-        ix = 288
+        #ix = 288
         if ix == None:
             ix = random.randint(0, 400)
         print(ix)
@@ -335,6 +337,7 @@ class ServerGTA:
         self.source_dataset.return_original = True
         image1 = self.source_dataset[ix][0]
         self.source_dataset.return_original = False
+        self.source_dataset.apply_only_fda = True
         image2 = self.source_dataset[ix][0]
 
         # Resize the images to have the same height
@@ -356,6 +359,8 @@ class ServerGTA:
 
         # Display the result image
         result.show()
+
+        return result #result is a pil image
     
     def delete_styles(self):
         self.styleaug.delete_styles()
@@ -369,8 +374,8 @@ class ServerGTA:
 #Altro metodo per trasferire gli stili
 
     def load_styles(self):
-        #il server ordina al client di estrarre e di passargli avg_style
-        #lo stile viene caricato nella banca degli stili dello style_applier
+        #server make the clients extract the avg_style and pass them to him
+        #styles are loaded in the style_applier's bank
         
         for target_client in self.target_clients:
             client_style, win_sizes, styles_name = target_client.extract_avg_style(b = self.b) 
@@ -378,7 +383,7 @@ class ServerGTA:
             if self.style_applier.sizes == None:
                 self.style_applier.set_win_sizes(win_sizes)
 
-    def apply_styles(self):
+    def apply_styles(self): #here we pass a funcion to the dataset that will be used to apply the styles (as a transform)
         self.source_dataset.set_style_tf_fn(self.style_applier.apply_style)
 
     def get_styles_mapping(self):
