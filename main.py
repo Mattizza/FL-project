@@ -54,7 +54,6 @@ def model_init(args):
         model.fc = nn.Linear(in_features=512, out_features=get_dataset_num_classes(args.dataset))
         return model
     if args.model == 'cnn':
-        # TODO: missing code here!
         raise NotImplementedError
     raise NotImplementedError
 
@@ -63,10 +62,10 @@ def get_transforms(args):
     # TODO: test your data augmentation by changing the transforms here!
     if args.model == 'deeplabv3_mobilenetv2':
         train_transforms = sstr.Compose([
-            #sstr.ColorJitter(brightness=0,
-            #                 contrast=0,
-            #                 saturation=0,
-            #                 hue=0.1),
+            sstr.ColorJitter(brightness=0.5,
+                             contrast=0.2,
+                             saturation=0.6,
+                             hue=0.1),
             sstr.RandomResizedCrop((512, 928), scale=(0.5, 2.0)),
             sstr.ToTensor(),
             sstr.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
@@ -258,7 +257,6 @@ def gen_clients_dom_adapt(args, idda_clients_datasets, test_datasets, model):
     return clients
 
 def get_sweep_transforms(args, config):
-    # TODO: test your data augmentation by changing the transforms here!
     if args.model == 'deeplabv3_mobilenetv2':
         rnd_transforms = []
         configColorJitter = config.get('colorJitter')
@@ -443,12 +441,11 @@ def main():
                 server.compare_wo_w_style()"""
             
             #Metodo che sfrutta uno style_extractor e uno style_applier
-            if args.fda.lower() == 'true':
+            if args.fda.lower() == 'true': #if FDA is active
                 print('Extracting stlyes from clients...')
-                server.load_styles()
-                server.apply_styles()
-                print('Done')
-                #raise NotImplementedError
+                server.load_styles() #extract_styles from clients
+                server.apply_styles() #apply styles to source dataset
+                print('\nDone')
 
             server.create_opt_sch(config=config)
             if args.checkpoint_to_load != None:
