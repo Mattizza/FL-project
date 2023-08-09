@@ -41,7 +41,7 @@ class StyleApplier:
     def apply_style(self, image):
         return self._apply_style(image)
 
-    #Data una immagine, le applica uno stile random preso dalla banca degli stili (self.styles)
+    #given a pil image, it returns a pil image with a random style from the style bank (self.styles)
     def _apply_style(self, img):
 
         if len(self.styles_bank) > 0:

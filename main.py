@@ -124,8 +124,8 @@ def get_transforms(args):
     #print("\nTest transfroms:", test_transforms)
     return train_transforms, test_transforms
 
-
-def read_femnist_dir(data_dir):
+#Da eliminare, non usata per il nostro progetto
+"""def read_femnist_dir(data_dir):
     data = defaultdict(lambda: {})
     files = os.listdir(data_dir)
     files = [f for f in files if f.endswith('.json')]
@@ -134,11 +134,11 @@ def read_femnist_dir(data_dir):
         with open(file_path, 'r') as inf:
             cdata = json.load(inf)
         data.update(cdata['user_data'])
-    return data
+    return data"""
 
-
-def read_femnist_data(train_data_dir, test_data_dir):
-    return read_femnist_dir(train_data_dir), read_femnist_dir(test_data_dir)
+#da eliminare, non usata per il nostro progetto
+"""def read_femnist_data(train_data_dir, test_data_dir):
+    return read_femnist_dir(train_data_dir), read_femnist_dir(test_data_dir)"""
 
 
 def get_datasets(args, train_transforms = None, test_transforms = None):
@@ -443,7 +443,7 @@ def main():
         sweeping(args)
     
     else:
-        #get the configuration from command line
+        #get the configuration from a file given in the command line
         with open('configs/' + args.config, 'r') as f:
             config = yaml.safe_load(f)
         

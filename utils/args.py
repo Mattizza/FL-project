@@ -23,12 +23,14 @@ def get_parser():
 
     parser.add_argument('--framework', type=str, choices = ['centralized', 'federated'], required=True, help = 'Choose a centralized or a federated framework')
     parser.add_argument('--config', type=str, default='bestHypSameDom.yaml', help = 'name of the file containing the configuration, stored in the configs folder (include extention .yaml)')
+    parser.add_argument('--transformConfig', type=str, default=None, help = 'name of the file containing the transforms instructions, stored in the transformsConfigs folder (include extention .yaml)')
     parser.add_argument('--mode', type=str, default='train', help = 'Mode can be train or test')
 
     
     #Task 3
     parser.add_argument('--t', type=int, default=1, help='num. of epoch between each evaluation on target dataset.')
     parser.add_argument('--fda', type=str, default='False', help = 'set True if you want to apply FDA.')
+    parser.add_argument('--b', type=int, default=None, help='size of the window to apply FDA.')
 
     #Task 4
     parser.add_argument('--self_train', type=str, default='false', help = 'set true if you want to use self train loss.')

@@ -47,7 +47,7 @@ class GTA5(VisionDataset):
 
         self.apply_only_fda = False #just for debugging
 
-        #!
+        
         self.style_tf_fn = None #style_transfer_function
         
         with open(os.path.join(self.root, 'train.txt'), 'r') as f:
@@ -71,7 +71,7 @@ class GTA5(VisionDataset):
         if self.return_original == False:
 
             if self.style_tf_fn is not None:
-                image = self.style_tf_fn(image)
+                image = self.style_tf_fn(image)#take a pil image and return a pil image with a random style from the style bank
             
             if not self.apply_only_fda:
                 if transform is not None:
