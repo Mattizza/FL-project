@@ -1,5 +1,4 @@
 *.pyc
-idda/
 venv
 *.log
 wandb
