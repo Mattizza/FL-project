@@ -237,7 +237,9 @@ def get_datasets_DA(args, train_transforms = None, test_transforms = None):
         
     eval_and_test_datasets = [idda_train, test_same_dom_dataset, test_diff_dom_dataset]
 
-    return train_dataset, idda_clients_datasets, eval_and_test_datasets
+    test_dataset_gta = GTA5(test_transform = test_transforms, client_name = 'test_gta5', target_dataset='idda', test=True)
+
+    return train_dataset, test_dataset_gta ,idda_clients_datasets, eval_and_test_datasets
 
 
 def set_metrics(args):
@@ -252,7 +254,8 @@ def set_metrics(args):
         metrics = {
             'idda_test' : StreamSegMetrics(num_classes, 'idda_test'),
             'test_same_dom': StreamSegMetrics(num_classes, 'test_same_dom'),
-            'test_diff_dom': StreamSegMetrics(num_classes, 'test_diff_dom')
+            'test_diff_dom': StreamSegMetrics(num_classes, 'test_diff_dom'),
+            'test_gta5': StreamSegMetrics(num_classes, 'test_gta5')
         }
 
     elif args.model == 'resnet18' or args.model == 'cnn':
@@ -414,16 +417,16 @@ def sweep_train_DA(args, config = None):
             train_transforms, test_transforms = get_sweep_transforms(args, transformConfig)
             print(train_transforms)
             print(test_transforms)
-            train_dataset, idda_clients_datasets, test_datasets = get_datasets_DA(args=args, train_transforms = train_transforms , test_transforms = test_transforms)
+            train_dataset, test_dataset_gta ,idda_clients_datasets, test_datasets = get_datasets_DA(args=args, train_transforms = train_transforms , test_transforms = test_transforms)
             path = 'configs/' + args.config
             configHyp = yaml_to_dict(path)
 
         elif args.wandb == 'hypTuning':
-            train_dataset, idda_clients_datasets, test_datasets = get_datasets_DA(args)
+            train_dataset, test_dataset_gta, idda_clients_datasets, test_datasets = get_datasets_DA(args)
             configHyp = config
 
         idda_clients, test_clients = gen_clients_dom_adapt(args, idda_clients_datasets, test_datasets, model)
-        server = ServerGTA(args, source_dataset=train_dataset, target_clients=idda_clients, test_clients=test_clients, model=model, metrics=metrics)
+        server = ServerGTA(args, source_dataset=train_dataset, source_dataset_test=test_dataset_gta,target_clients=idda_clients, test_clients=test_clients, model=model, metrics=metrics)
         print(configHyp)
         server.create_opt_sch(configHyp)
 
@@ -463,10 +466,10 @@ def main():
         metrics = set_metrics(args)
         
         if args.dataset == 'gta5':
-            train_dataset, idda_clients_datasets, test_datasets = get_datasets_DA(args)
+            train_dataset, test_dataset_gta, idda_clients_datasets, test_datasets = get_datasets_DA(args)
             print('Done.')
             idda_clients, test_clients = gen_clients_dom_adapt(args, idda_clients_datasets, test_datasets, model)
-            server = ServerGTA(args, source_dataset=train_dataset, target_clients=idda_clients, test_clients=test_clients, model=model, metrics=metrics)
+            server = ServerGTA(args, source_dataset=train_dataset, source_dataset_test=test_dataset_gta, target_clients=idda_clients, test_clients=test_clients, model=model, metrics=metrics)
             
             #Metodo che sfrutta un unico style transfer
             """if args.fda.lower() == 'true':
@@ -492,7 +495,6 @@ def main():
             if args.checkpoint_to_load != None:
                 server.load_checkpoint()
             server.train()
-            server.test()
 
         elif args.dataset == 'idda':
             train_datasets, test_train_datasets, test_datasets = get_datasets(args)

@@ -20,19 +20,22 @@ from style_applier import StyleApplier
 
 
 class ServerGTA:
-    def __init__(self, args, source_dataset, target_clients, test_clients, model, metrics):
+    def __init__(self, args, source_dataset, source_dataset_test, target_clients, test_clients, model, metrics):
         self.args = args
+        self.model = model
 
-        self.source_dataset = source_dataset
+        self.source_dataset = source_dataset #train on this gta dataset
+        self.source_dataset_test = source_dataset_test #test on this gta dataset
         self.target_clients = target_clients #lista dei target_clients ovvero i clienti che hanno una partizione di idda
         self.test_clients = test_clients #lista con tre elementi (idda_test, idda_same_dom, idda_diff_dom)
+        self.test_client_gta = Client(self.args, train_dataset=None, test_dataset=self.source_dataset_test, model=self.model, test_client=True)
 
-        self.model = model
         self.metrics = metrics
         self.model_params_dict = copy.deepcopy(self.model.state_dict()) #da eliminare
         
         self.train_loader = DataLoader(self.source_dataset, batch_size=self.args.bs, shuffle=True, drop_last=True)
-        self.mious = {'idda_test':[], "test_same_dom":[], "test_diff_dom":[]}
+        self.test_loader_gta = DataLoader(self.source_dataset_test, batch_size=1, shuffle=False)
+        self.mious = {'idda_test':[], 'test_gta5':[],"test_same_dom":[], "test_diff_dom":[]}
 
         self.criterion = nn.CrossEntropyLoss(ignore_index=255, reduction='none')
         self.reduction = HardNegativeMining() if self.args.hnm else MeanReduction()
@@ -209,12 +212,14 @@ class ServerGTA:
                 # ==== Saving the model ====
                 #compare current eval_miou with the max_eval_miou
                 if eval_miou > self.max_eval_miou and self.args.name_checkpoint_to_save != None:
+                    self.test_gta() #test on gta
+                    self.model.train() #set the model back to train mode
                     self.max_eval_miou = eval_miou #update max_eval_miou
                     self.save_checkpoint(eval_miou, actual_epochs_executed)
 
 
 
-            # Here we are simply computing how many steps do we need to complete an epoch.
+            # Here we are computing how many steps do we need to complete an epoch.
             self.n_epoch_steps.append(self.n_epoch_steps[0] * (epoch + 1))
         
         avg_loss_last_epoch = avg_loss
@@ -244,8 +249,13 @@ class ServerGTA:
         customPath = self.args.name_checkpoint_to_save
         path = os.path.join(root1, root2, customPath)
         torch.save(checkpoint, path)
-        print(f"=> Saving checkpoint at {path}.\n- Target_eval_miou: {eval_miou:.2%}\n- Test_same_dom: {self.mious['test_same_dom'][-1]:.2%}\n- Test_diff_dom: {self.mious['test_diff_dom'][-1]:.2%}\n")
-        
+        #print(f"=> Saving checkpoint at {path}.\n- Target_eval_miou: {eval_miou:.2%}\n- Test_same_dom: {self.mious['test_same_dom'][-1]:.2%}\n- Test_diff_dom: {self.mious['test_diff_dom'][-1]:.2%}\n")
+        print(f"=> Saving checkpoint at {path}.\n"
+            f"- Target_eval_miou: {eval_miou:.2%}\n"
+            f"- Test_same_dom: {self.mious['test_same_dom'][-1]:.2%}\n"
+            f"- Test_diff_dom: {self.mious['test_diff_dom'][-1]:.2%}\n"
+            f"- Test_gta: {self.mious['test_gta5'][-1]:.2%}\n")
+            
     
     def load_checkpoint(self):
         root1 = 'checkpoints'
@@ -253,7 +263,14 @@ class ServerGTA:
         path = os.path.join(root1, root2, self.args.checkpoint_to_load)
         checkpoint = torch.load(path)
         #TODO: check the print
-        print(f"\n=> Loading the model trained on {checkpoint['train_dataset']}:\n - epochs executed: {checkpoint['actual_epochs_executed']}\n - Target_eval_miou on {checkpoint['eval_dataset']}: {checkpoint['target_eval_miou']:.2%}\n - Test_same_dom: {checkpoint['mious']['test_same_dom'][-1]:.2%}\n - Test_diff_dom: {checkpoint['mious']['test_diff_dom'][-1]:.2%}\n")
+        #print(f"\n=> Loading the model trained on {checkpoint['train_dataset']}:\n - epochs executed: {checkpoint['actual_epochs_executed']}\n - Target_eval_miou on {checkpoint['eval_dataset']}: {checkpoint['target_eval_miou']:.2%}\n - Test_same_dom: {checkpoint['mious']['test_same_dom'][-1]:.2%}\n - Test_diff_dom: {checkpoint['mious']['test_diff_dom'][-1]:.2%}\n")
+        print(f"\n=> Loading the model trained on {checkpoint['train_dataset']}:\n"
+            f" - epochs executed: {checkpoint['actual_epochs_executed']}\n"
+            f" - Target_eval_miou on {checkpoint['eval_dataset']}: {checkpoint['target_eval_miou']:.2%}\n"
+            f" - Test_same_dom: {checkpoint['mious']['test_same_dom'][-1]:.2%}\n"
+            f" - Test_diff_dom: {checkpoint['mious']['test_diff_dom'][-1]:.2%}\n"
+            f" - Test_gta: {checkpoint['mious']['test_gta5'][-1]:.2%}\n")
+        
         self.model.load_state_dict(checkpoint['model_state'])
         self.optimizer.load_state_dict(checkpoint['optimizer_state'])
 
@@ -307,8 +324,23 @@ class ServerGTA:
             miou = metric.get_results()['Mean IoU']
             if self.args.wandb != None:
                 wandb.log({client.name : miou})
-            print(f'Mean IoU: {miou:.2%}')
+            print(f'Mean IoU: {miou:.2%} \n')
             self.mious[client.name].append(miou)
+    
+    def test_gta(self):
+        metric = self.metrics['test_gta5']
+        metric.reset()
+        print(f"Evaluating on gta train dataset")
+        client = self.test_client_gta
+        self.load_server_model_on_client(client)
+        client.test(metric)
+        miou = metric.get_results()['Mean IoU']
+        # wandb
+        if self.args.wandb != None:
+            wandb.log({'gta_miou': miou})
+        print(f'Mean IoU on gta_train: {miou:.2%} \n')
+        self.mious['test_gta5'].append(miou)
+        return miou
 
 
 
@@ -316,13 +348,13 @@ class ServerGTA:
         client.model = self.model #<- con questa passi proprio il modello
         #client.model.load_state_dict(copy.deepcopy(self.model.state_dict())) #<- con questa passi i parametri del modello
 
-    def extract_styles(self): #Metodo alernativo non più usato
+    """def extract_styles(self): #Metodo alernativo non più usato
         #extract just two styles for debbugging purposes
         target_client = self.target_clients[3]
         self.styleaug.add_style(target_client.test_dataset, name=target_client.name)
         
         #for target_client in self.target_clients:
-        #    self.styleaug.add_style(target_client.test_dataset, name=target_client.name)
+        #    self.styleaug.add_style(target_client.test_dataset, name=target_client.name)"""
     
     def apply_styles(self):
         self.source_dataset.set_style_tf_fn(self.styleaug.apply_style)
