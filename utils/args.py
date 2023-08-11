@@ -25,7 +25,9 @@ def get_parser():
     parser.add_argument('--config', type=str, default='bestHypSameDom.yaml', help = 'name of the file containing the configuration, stored in the configs folder (include extention .yaml)')
     parser.add_argument('--transformConfig', type=str, default=None, help = 'name of the file containing the transforms instructions, stored in the transformsConfigs folder (include extention .yaml)')
     parser.add_argument('--mode', type=str, default='train', help = 'Mode can be train or test')
-
+    
+    #Task 2
+    parser.add_argument('--r', type=int, default=None, help='num. of round beween each evaluation in federated framework.')
     
     #Task 3
     parser.add_argument('--t', type=int, default=1, help='num. of epoch between each evaluation on target dataset.')

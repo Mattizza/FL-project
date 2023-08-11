@@ -45,7 +45,7 @@ class Server:
                 sys.exit('An error occurred: you must specify a checkpoint to load if in self_train mode!')
             self.teacher_model = model #creo un teacher model allenato
         
-        if self.args.our_self_train == 'true':
+        if self.args.our_self_train == 'true': #pseudo labels before transforms
             if self.args.checkpoint_to_load == None:
                 sys.exit('An error occurred: you must specify a checkpoint to load if in self_train mode!')
             self.teacher_model = model #creo un teacher model allenato
@@ -98,15 +98,6 @@ class Server:
         choosen_clients = np.random.choice(self.train_clients, num_clients, replace=False, p = p)
 
         return choosen_clients
-    
-    #! Metodo commentato perchè si crea un optimizer ogni volta che viene chiamato un client
-    #def distribute_config_dict(self, config: dict):
-        """
-            This method iterates over each train client and creates in each of them and optimizer and
-            a scheduler according to the configuration contained in config 
-        """
-        #for c in self.train_clients:
-            #c.create_opt_sch(config)
 
 
     def train_round(self):
@@ -297,26 +288,30 @@ class Server:
             
             self.update_model(updates)
         
-        """#Check performances every
-            if round+1 == check_list[i]:
-                if i < len(check_list)-1:
-                    i+=1
-                print("\nTesting model\n")
-                print("Model del server prima del test:", self.model.training)
-                print("Model di un train client random prima del test:", self.train_clients[8].model.training)
-                print("Model di un test client random prima del test:", self.test_clients[1].model.training)
-                
-                self.eval_train()
-                self.test()
-                print("Model del server dopo il test:", self.model.training)
-                print("Model di un train client random dopo il test:", self.train_clients[8].model.training)
-                print("Model di un test client random dopo il test:", self.test_clients[1].model.training)
+            #Check performances every r rounds
+            if self.args.r != None:
 
-                self.model.train()
+                #if round+1 == check_list[i]: #if you want to use a list of rounds
+                #    if i < len(check_list)-1:
+                #        i+=1
 
-                print("Model del server dopo mode train:", self.model.training)
-                print("Model di un train client random dopo mode train:", self.train_clients[8].model.training)
-                print("Model di un test client random dopo mode train:", self.test_clients[1].model.training)"""
+                if (round+1) % self.args.r == 0:
+                    print("\nTesting...\n")
+                    print("Model del server prima del test:", self.model.training)
+                    print("Model di un train client random prima del test:", self.train_clients[8].model.training)
+                    print("Model di un test client random prima del test:", self.test_clients[1].model.training)
+                    
+                    self.eval_train() #evaluation on train clients
+                    self.test() #testing on same dom and diff dom
+                    print("Model del server dopo il test:", self.model.training)
+                    print("Model di un train client random dopo il test:", self.train_clients[8].model.training)
+                    print("Model di un test client random dopo il test:", self.test_clients[1].model.training)
+
+                    self.model.train()
+
+                    print("Model del server dopo mode train:", self.model.training)
+                    print("Model di un train client random dopo mode train:", self.train_clients[8].model.training)
+                    print("Model di un test client random dopo mode train:", self.test_clients[1].model.training)
 
 
                 
@@ -339,9 +334,8 @@ class Server:
 
         metric = self.metrics['eval_train']
         metric.reset()
-        print(f"Testing train clients")
+        print(f"\nTesting train clients")
         for client in self.train_clients:
-            #print(f"Testing client {client.name}...")
             self.load_server_model_on_client(client)
             client.test(metric)
 
@@ -357,9 +351,8 @@ class Server:
             if os.path.exists(path):
                 checkpoint = torch.load(path)
                 checkpoint['metrics_dict']['eval_train'] = metric
-                #checkpoint['target_eval_miou'] = miou
                 torch.save(checkpoint, path)
-                print("\nAdded eval_train metric in checkpoint\n")
+                print("Added eval_train metric in checkpoint")
 
         print(f'Mean IoU: {miou:.2%}')
         self.mious['eval_train'].append(miou)
@@ -381,7 +374,7 @@ class Server:
                     checkpoint = torch.load(path)
 
         for client in self.test_clients:
-            print(f"Testing client {client.name}...")
+            print(f"\nTesting client {client.name}...")
             self.load_server_model_on_client(client)
             metric = self.metrics[client.name]
             metric.reset()
@@ -391,7 +384,7 @@ class Server:
             if checkpoint != None:
                 checkpoint['metrics_dict'][client.name] = metric
                 torch.save(checkpoint, path)
-                print(f"\nAdded {client.name} metric in checkpoint\n")
+                print(f"Added {client.name} metric in checkpoint")
 
             if self.args.wandb != None:
                 wandb.log({client.name : miou})
@@ -412,7 +405,8 @@ class Server:
                     "metrics_dict": {}, #these dicts will be filled with the metrics objects in the test() and eval_train() methods
                     #"target_eval_miou": None, #TODO: qui salvare gli oggetti metrics invece di un singolo numero
                     "eval_dataset" : type(self.train_clients[0].test_dataset).__name__,
-                    "train_dataset": type(self.test_clients[0].test_dataset).__name__}
+                    "train_dataset": type(self.test_clients[0].test_dataset).__name__,
+                    "framework": self.args.framework}
         
         root1 = 'checkpoints'
         root2 = 'idda'
@@ -420,8 +414,32 @@ class Server:
         path = os.path.join(root1, root2, customPath)
         torch.save(checkpoint, path)
         
-        print(f"\n=> Saving checkpoint at {path}.\n")
+        print(f"\n=> Saving checkpoint at {path}.\n"
+              f" - framework: {checkpoint['framework']}\n"
+              f" - rounds executed: {checkpoint['actual_rounds_executed']}\n"
+              f" - epochs executed at each round: {checkpoint['actual_epochs_executed']}\n"
+              )
 
+    def checkpoint_recap(self):
+        root1 = 'checkpoints'
+        root2 = 'idda'
+        path = os.path.join(root1, root2, self.args.name_checkpoint_to_save)
+        checkpoint = torch.load(path)
+        print("\nCheckpoint recap:")
+        print(f" - framework: {checkpoint['framework']}")
+
+        if self.args.framework == 'centralized':
+                  print(f" - epochs executed: {checkpoint['actual_epochs_executed']}")
+
+                  
+        elif self.args.framework == 'federated':
+                  print(f" - local epochs executed for each client for each round: {checkpoint['actual_epochs_executed']}\n"
+                        f" - rounds executed: {checkpoint['actual_rounds_executed']}")
+
+        print(f" - Eval_miou: {checkpoint['metrics_dict']['eval_train'].get_results()['Mean IoU']:.2%}"
+              f"\n - Test_miou: {checkpoint['metrics_dict']['test_same_dom'].get_results()['Mean IoU']:.2%}"
+              f"\n - Test_miou: {checkpoint['metrics_dict']['test_diff_dom'].get_results()['Mean IoU']:.2%}"
+              )
 
     def load_model_to_test_results(self):
         root1 = 'checkpoints'

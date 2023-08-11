@@ -471,19 +471,6 @@ def main():
             idda_clients, test_clients = gen_clients_dom_adapt(args, idda_clients_datasets, test_datasets, model)
             server = ServerGTA(args, source_dataset=train_dataset, source_dataset_test=test_dataset_gta, target_clients=idda_clients, test_clients=test_clients, model=model, metrics=metrics)
             
-            #Metodo che sfrutta un unico style transfer
-            """if args.fda.lower() == 'true':
-                print('Extracting stlyes from clients...')
-                server.extract_styles()
-                print('Done.')
-                
-                print('Add idda style to gta5 images')
-                server.apply_styles()
-                print('Done.')
-
-                #Stampa un immagine random senza e con stile transfer
-                server.compare_wo_w_style()"""
-            
             #Metodo che sfrutta uno style_extractor e uno style_applier
             if args.fda.lower() == 'true': #if FDA is active
                 print('Extracting stlyes from clients...')
@@ -504,6 +491,9 @@ def main():
             server.train()
             server.eval_train()
             server.test()
+            if args.name_checkpoint_to_save != None:
+                server.checkpoint_recap()
+
 
 if __name__ == '__main__':
     main()
