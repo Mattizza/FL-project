@@ -53,7 +53,10 @@ class SelfTrainingLoss(nn.Module):
         self.lambda_selftrain = lambda_selftrain
 
     def set_teacher(self, model):
+        #model.eval() #the model is already in eval mode and will stay like this
         self.teacher = model
+        #print("is on cuda: ",next(self.teacher.parameters()).is_cuda)
+        #print("is in train mode: ", self.teacher.training)
 
     def get_image_mask(self, prob, pseudo_lab):
         max_prob = prob.detach().clone().max(0)[0] #trova la probabilità massima per ogni pxl

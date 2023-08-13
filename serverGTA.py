@@ -389,6 +389,8 @@ class ServerGTA:
         result.paste((255, 255, 255), (image1.width, 0, image1.width + column_width, height))
         result.paste(image2, (image1.width + column_width, 0))
 
+        self.source_dataset.apply_only_fda = False
+
         # Display the result image
         result.show()
 

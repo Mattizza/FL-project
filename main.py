@@ -493,6 +493,8 @@ def main():
             server.test()
             if args.name_checkpoint_to_save != None:
                 server.checkpoint_recap()
+            if args.framework == 'federated' and args.r != None:
+                server.download_mious_as_csv()
 
 
 if __name__ == '__main__':

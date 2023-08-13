@@ -9,6 +9,7 @@ import os
 import sys
 from tqdm import tqdm
 from client_selector import ClientSelector
+import pandas as pd
 
 class Server:
 
@@ -23,7 +24,7 @@ class Server:
         
         # ==== Loading the checkpoint if enabled====
         if self.args.checkpoint_to_load != None:
-            if self.args.self_train == 'true' or self.args.our_self_train: #load a model trained on source dataset
+            if self.args.self_train == 'true' or self.args.our_self_train == 'true': #load a model trained on source dataset
                 self.load_source_trained_model()
             else:
                 self.load_model_to_test_results() #load a model to test the performances
@@ -39,19 +40,19 @@ class Server:
         self.client_selector_custom = ClientSelector(self.train_clients)
 
         #Task 4
-        #
         if self.args.self_train == 'true':
             if self.args.checkpoint_to_load == None:
                 sys.exit('An error occurred: you must specify a checkpoint to load if in self_train mode!')
-            self.teacher_model = model #creo un teacher model allenato
+            self.model.eval() #da errore se copio il modello in train mode e poi lo cambio in eval, quindi lo copio in eval mode e poi lo cambio in train mode
+            self.teacher_model = copy.deepcopy(model) #create a pre-trained teacher model
+            self.model.train()
         
         if self.args.our_self_train == 'true': #pseudo labels before transforms
             if self.args.checkpoint_to_load == None:
                 sys.exit('An error occurred: you must specify a checkpoint to load if in self_train mode!')
-            self.teacher_model = model #creo un teacher model allenato
+            self.teacher_model = copy.deepcopy(model) #creo un teacher model allenato
         
         #Task 5
-        #
         """if self.args.framework == 'federated':
             self.aggregator = Aggregator(self.args.sigma)"""
         
@@ -118,7 +119,8 @@ class Server:
 
             print(client.name)
             self.load_server_model_on_client(client)
-            
+
+            #Task4 - At each round, the teacher model is setted in the selected clients
             if self.args.self_train == 'true':
                 client.self_train_loss.set_teacher(self.teacher_model)#passa in teacher model alla loss del client
             
@@ -274,15 +276,16 @@ class Server:
             self.teacher_model.load_state_dict(self.model_params_dict) #aggiorno il teacher model (lo rendo uguale a global model)
         """
 
-        #check_list = [1,5,10] 
+        #check_list = [1,5,10,25,50,75,100] 
         #i = 0
         for round in range(self.args.num_rounds):
             print(f'\nRound {round+1}\n')
 
-            #Task 4
+            #Task 4 - updating the teacher model
             if self.args.self_train == 'true' and self.args.T != None:
                 if round % self.args.T == 0: #ogni T round (e a round 0)
-                    self.teacher_model.load_state_dict(self.model_params_dict) #aggiorno il teacher model (lo rendo uguale a global model)
+                    print(f"Begin of round {round+1}. Updating teacher model...")
+                    self.teacher_model.load_state_dict(self.model_params_dict) #aggiorno il teacher model (lo rendo uguale a global model), the mode of the teacher model stays eval
 
             updates, round_avg_loss = self.train_round() #crea un lista [(num_samples, model_state_dict),...,]           
             
@@ -290,28 +293,35 @@ class Server:
         
             #Check performances every r rounds
             if self.args.r != None:
-
-                #if round+1 == check_list[i]: #if you want to use a list of rounds
-                #    if i < len(check_list)-1:
-                #        i+=1
-
+                #if self.args.r == -1: #if you want to use a list of rounds
+                    #if round+1 == check_list[i]: 
+                    #    if i < len(check_list)-1:
+                    #        i+=1
+                #else
                 if (round+1) % self.args.r == 0:
+
+                    #Save checkpoint if enabled, only for task 2
+                    if self.args.framework == 'federated' and self.args.self_train != 'true' and self.args.name_checkpoint_to_save != None:
+                        self.save_checkpoint(self.args.num_epochs, round+1)
+
                     print("\nTesting...\n")
-                    print("Model del server prima del test:", self.model.training)
+                    """print("Model del server prima del test:", self.model.training)
                     print("Model di un train client random prima del test:", self.train_clients[8].model.training)
-                    print("Model di un test client random prima del test:", self.test_clients[1].model.training)
+                    print("Model di un test client random prima del test:", self.test_clients[1].model.training)"""
                     
                     self.eval_train() #evaluation on train clients
                     self.test() #testing on same dom and diff dom
-                    print("Model del server dopo il test:", self.model.training)
+                    """print("Model del server dopo il test:", self.model.training)
                     print("Model di un train client random dopo il test:", self.train_clients[8].model.training)
-                    print("Model di un test client random dopo il test:", self.test_clients[1].model.training)
+                    print("Model di un test client random dopo il test:", self.test_clients[1].model.training)"""
 
                     self.model.train()
 
-                    print("Model del server dopo mode train:", self.model.training)
+                    """print("Model del server dopo mode train:", self.model.training)
                     print("Model di un train client random dopo mode train:", self.train_clients[8].model.training)
-                    print("Model di un test client random dopo mode train:", self.test_clients[1].model.training)
+                    print("Model di un test client random dopo mode train:", self.test_clients[1].model.training)"""
+
+                    
 
 
                 
@@ -468,13 +478,26 @@ class Server:
         checkpoint = torch.load(path)
         print(f"\n=> Loading the model trained on {checkpoint['train_dataset']}:"
                   f"\n - epochs executed: {checkpoint['actual_epochs_executed']}"
-                  f"\n - Target_eval_miou on {checkpoint['eval_dataset']}: {checkpoint['target_eval_miou']:.2%}\n")
+                  f"\n - Target_eval_miou on {checkpoint['eval_dataset']}: {checkpoint['target_eval_miou']:.2%}"
+                  f"\n - idda same_dom_miou: {checkpoint['metrics']['test_same_dom'].get_results()['Mean IoU']:.2%}"
+                  f"\n - idda diff_dom_miou: {checkpoint['metrics']['test_diff_dom'].get_results()['Mean IoU']:.2%}\n")
         
         self.model.load_state_dict(checkpoint['model_state'])
 
-        if self.args.fda == 'true':
+        if self.args.fda == 'true': #These are needed for the clustering
             self.styles_mapping = checkpoint["styles_mapping"]
             self.winSize = checkpoint["winSize"]
-    
-    
-    
+
+    def download_mious_as_csv(self):
+        dict_to_csv = self.mious
+        dict_to_csv['epoch'] = [i*self.args.r for i in range(1, int(self.args.num_rounds / self.args.r) + 1)]
+        dict_to_csv['epoch'].append(self.args.num_rounds)
+        df = pd.DataFrame(dict_to_csv)
+        df = df[[df.columns[-1]] + list(df.columns[:-1])] #put the epoch column at the beginning
+        root = 'csv_mious'
+        epochs = str(self.args.num_epochs)
+        rounds = str(self.args.num_rounds)
+        file = 'mious_e' + epochs + '_r' + rounds+'.csv'
+        path = os.path.join(root,file)
+        df.to_csv(path, index=False)
+        print("Saved results in csv file ", path)    

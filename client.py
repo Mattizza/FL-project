@@ -40,14 +40,12 @@ class Client:
         
         #Models
         self.model = model
-        #! da rimuovere se si passa dal main 
         self.model.cuda()
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         #choose loss
         if args.self_train == 'true':
-            self.self_train_loss = SelfTrainingLoss()
-            #self.self_train_loss.set_teacher(self.model) Rimosso perchè viene settato dal server
+            self.self_train_loss = SelfTrainingLoss() #a teacher model will be assigned from the server
         else:
             self.criterion = nn.CrossEntropyLoss(ignore_index=255, reduction='none')
             self.reduction = HardNegativeMining() if self.args.hnm else MeanReduction()
@@ -149,14 +147,14 @@ class Client:
         return cumu_loss /len(self.train_loader)
     
     #TODO: funzione da correggere dopo il cambiamento di opt e sched creati on the fly
-    def run_epoch_self_train(self, cur_epoch, n_steps):
+    def run_epoch_self_train(self, cur_epoch, optimizer, n_steps):
         cumu_loss = 0
         print('Epoch', cur_epoch + 1)
         for cur_step, (images, _) in enumerate(self.train_loader):
                 
             self.n_total_steps = len(self.train_loader)
 
-            #! è corretto che queste immagini abbiano subito le stesse transforms?
+            #? è corretto che queste immagini abbiano subito le stesse transforms? Sì
             images = images.to(self.device, dtype = torch.float32) 
             outputs = self._get_outputs(images)
             
@@ -164,15 +162,14 @@ class Client:
 
 
             cumu_loss += loss.item()
-            self.optimizer.zero_grad()
+            optimizer.zero_grad()
             loss.backward()
-            self.optimizer.step()
-            if self.args.wandb != None and self.args.framework == 'centralized':
-                wandb.log({"batch loss": loss.item()})
+            optimizer.step()
+            
+            #!commented since we don't want to log the loss of each client if in self-training since we are always in federated
+            #if self.args.wandb != None and self.args.framework == 'centralized':
+            #    wandb.log({"batch loss": loss.item()})
 
-            # We keep track of the loss. Notice we are storing the loss for
-            # each mini-batch.
-            #wandb.log({"loss": loss.mean()})
             
             # We are considering 10 batch at a time. TO DO: define a way to handle different values.
             # We are considering n_steps batch at a time.
@@ -194,7 +191,7 @@ class Client:
                 self.n_10th_steps.append(self.count)
                 print(f'epoch {cur_epoch + 1} / {self.args.num_epochs}, step {cur_step + 1} / {self.n_total_steps}, loss = {loss.mean():.3f}')
         
-        return cumu_loss /len(self.train_loader)
+        return cumu_loss / len(self.train_loader)
 
     def _configure_optimizer(self, config):
         """
@@ -278,7 +275,7 @@ class Client:
                     wandb.log({"lr": optimizer.param_groups[0]['lr']})
             
             if self.args.self_train == 'true':
-                avg_loss = self.run_epoch_self_train(epoch, n_steps)
+                avg_loss = self.run_epoch_self_train(epoch, optimizer, n_steps)
             else:
                 avg_loss = self.run_epoch(epoch, optimizer, n_steps)
 
