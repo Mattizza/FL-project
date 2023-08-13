@@ -276,8 +276,8 @@ class Server:
             self.teacher_model.load_state_dict(self.model_params_dict) #aggiorno il teacher model (lo rendo uguale a global model)
         """
 
-        #check_list = [1,5,10,25,50,75,100] 
-        #i = 0
+        check_list = [1, 5, 15, 20, 25, 30, 50, 40, 75, 100]
+        i = 0
         for round in range(self.args.num_rounds):
             print(f'\nRound {round+1}\n')
 
@@ -293,33 +293,31 @@ class Server:
         
             #Check performances every r rounds
             if self.args.r != None:
-                #if self.args.r == -1: #if you want to use a list of rounds
-                    #if round+1 == check_list[i]: 
-                    #    if i < len(check_list)-1:
-                    #        i+=1
-                #else
-                if (round+1) % self.args.r == 0:
+                if self.args.r == -1: #if you want to use a list of rounds
+                    if round+1 == check_list[i]:
+                        #Save checkpoint if enabled, only for task 2
+                        if self.args.framework == 'federated' and self.args.self_train != 'true' and self.args.name_checkpoint_to_save != None:
+                            self.save_checkpoint(self.args.num_epochs, round+1)
 
-                    #Save checkpoint if enabled, only for task 2
-                    if self.args.framework == 'federated' and self.args.self_train != 'true' and self.args.name_checkpoint_to_save != None:
-                        self.save_checkpoint(self.args.num_epochs, round+1)
+                        print("\nTesting...\n")
+                        self.eval_train() #evaluation on train clients
+                        self.test() #testing on same dom and diff dom
+                        self.model.train()
 
-                    print("\nTesting...\n")
-                    """print("Model del server prima del test:", self.model.training)
-                    print("Model di un train client random prima del test:", self.train_clients[8].model.training)
-                    print("Model di un test client random prima del test:", self.test_clients[1].model.training)"""
-                    
-                    self.eval_train() #evaluation on train clients
-                    self.test() #testing on same dom and diff dom
-                    """print("Model del server dopo il test:", self.model.training)
-                    print("Model di un train client random dopo il test:", self.train_clients[8].model.training)
-                    print("Model di un test client random dopo il test:", self.test_clients[1].model.training)"""
+                        if i < len(check_list)-1:
+                            i+=1
+                else:
+                    if (round+1) % self.args.r == 0:
 
-                    self.model.train()
+                        #Save checkpoint if enabled, only for task 2
+                        if self.args.framework == 'federated' and self.args.self_train != 'true' and self.args.name_checkpoint_to_save != None:
+                            self.save_checkpoint(self.args.num_epochs, round+1)
 
-                    """print("Model del server dopo mode train:", self.model.training)
-                    print("Model di un train client random dopo mode train:", self.train_clients[8].model.training)
-                    print("Model di un test client random dopo mode train:", self.test_clients[1].model.training)"""
+                        print("\nTesting...\n")
+                        self.eval_train() #evaluation on train clients
+                        self.test() #testing on same dom and diff dom
+                        self.model.train()
+
 
                     
 
