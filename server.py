@@ -276,7 +276,7 @@ class Server:
             self.teacher_model.load_state_dict(self.model_params_dict) #aggiorno il teacher model (lo rendo uguale a global model)
         """
 
-        check_list = [1, 5, 15, 20, 25, 30, 50, 40, 75, 100]
+        check_list = [1, 5, 10, 15, 20, 25, 30, 35, 40, 50, 60, 70, 80, 90, 100]
         i = 0
         for round in range(self.args.num_rounds):
             print(f'\nRound {round+1}\n')
