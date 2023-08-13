@@ -19,23 +19,22 @@ class Server:
         self.test_clients = test_clients #lista con due elementi (istanza della classe client (test_client = True))
         #self.selected_clients = [] #client che vengono selezionati ad ogni round
         self.model = model #da passare poi al client
-
+        
+        self.prev_rounds_executed = 0 #useful if continue training from a checkpoint
+        
         self.config = config
+
+        self.mious = {'round':[], 'eval_train':[], "test_same_dom":[], "test_diff_dom":[]}
         
         # ==== Loading the checkpoint if enabled====
         if self.args.checkpoint_to_load != None:
             if self.args.self_train == 'true' or self.args.our_self_train == 'true': #load a model trained on source dataset
                 self.load_source_trained_model()
             else:
-                self.load_model_to_test_results() #load a model to test the performances
+                self.load_model_to_continue_train_task2() #load a model to test the performances
         
         self.metrics = metrics
         self.model_params_dict = copy.deepcopy(self.model.state_dict())
-
-        if args.dataset != 'gta5':
-            self.mious = {'eval_train':[], "test_same_dom":[], "test_diff_dom":[]}
-        elif args.dataset == 'gta5':
-            self.mious = {'eval_train': [], 'idda_test':[], "test_same_dom":[], "test_diff_dom":[]}
         
         self.client_selector_custom = ClientSelector(self.train_clients)
 
@@ -276,58 +275,74 @@ class Server:
             self.teacher_model.load_state_dict(self.model_params_dict) #aggiorno il teacher model (lo rendo uguale a global model)
         """
 
-        check_list = [1, 5, 10, 15, 20, 25, 30, 35, 40, 50, 60, 70, 80, 90, 100]
+        self.check_list = [1, 5, 10, 15, 20, 25, 30, 35, 40, 50, 60, 70, 80, 90, 100]
         i = 0
-        for round in range(self.args.num_rounds):
-            print(f'\nRound {round+1}\n')
+        for round in range(self.args.num_rounds): 
+            true_round = round + 1 + self.prev_rounds_executed #self.prev_rounds_executed is 0 if you don't load a checkpoint
+            print(f'\nRound {true_round}\n')
 
             #Task 4 - updating the teacher model
             if self.args.self_train == 'true' and self.args.T != None:
                 if round % self.args.T == 0: #ogni T round (e a round 0)
-                    print(f"Begin of round {round+1}. Updating teacher model...")
+                    print(f"Begin of round {true_round}. Updating teacher model...")
                     self.teacher_model.load_state_dict(self.model_params_dict) #aggiorno il teacher model (lo rendo uguale a global model), the mode of the teacher model stays eval
 
             updates, round_avg_loss = self.train_round() #crea un lista [(num_samples, model_state_dict),...,]           
             
             self.update_model(updates)
-        
-            #Check performances every r rounds
-            if self.args.r != None:
-                if self.args.r == -1: #if you want to use a list of rounds
-                    if round+1 == check_list[i]:
-                        #Save checkpoint if enabled, only for task 2
-                        if self.args.framework == 'federated' and self.args.self_train != 'true' and self.args.name_checkpoint_to_save != None:
-                            self.save_checkpoint(self.args.num_epochs, round+1)
+            
+            #Check performances and save checkpoint every r rounds
+            if self.args.r == -1: #if you want to use a list of rounds
+            
+                if round+1 == self.check_list[i]:
+                    #! Save checkpoint if enabled, only for task 2, forse si può usare anche per il task 4
+                    if self.args.framework == 'federated' and self.args.self_train != 'true' and self.args.name_checkpoint_to_save != None:
+                        self.save_checkpoint(self.args.num_epochs, true_round)
 
-                        print("\nTesting...\n")
-                        self.eval_train() #evaluation on train clients
-                        self.test() #testing on same dom and diff dom
-                        self.model.train()
+                    print("\nTesting...\n")
+                    self.eval_train() #evaluation on train clients
+                    self.test() #testing on same dom and diff dom
+                    self.model.train()
 
-                        if i < len(check_list)-1:
-                            i+=1
-                else:
-                    if (round+1) % self.args.r == 0:
-
-                        #Save checkpoint if enabled, only for task 2
-                        if self.args.framework == 'federated' and self.args.self_train != 'true' and self.args.name_checkpoint_to_save != None:
-                            self.save_checkpoint(self.args.num_epochs, round+1)
-
-                        print("\nTesting...\n")
-                        self.eval_train() #evaluation on train clients
-                        self.test() #testing on same dom and diff dom
-                        self.model.train()
-
-
-                    
-
-
+                    if i < len(self.check_list)-1:
+                        i+=1
+            
+            elif self.args.r == None:
                 
-                                
-        
-        #==== After the trainig save the checkpoint if enabled ====
-        if self.args.name_checkpoint_to_save != None:
-            self.save_checkpoint(self.args.num_epochs, self.args.num_rounds)
+                if round+1 == self.args.num_rounds: #if we are in the last round and r is not specified
+                    #! Save checkpoint if enabled, only for task 2, forse si può usare anche per il task 4
+                    if self.args.framework == 'federated' and self.args.self_train != 'true' and self.args.name_checkpoint_to_save != None:
+                        self.save_checkpoint(self.args.num_epochs, true_round) # save checkpoint and test only at last epoch
+                    
+                    print("\nTesting...\n")
+                    self.eval_train() #evaluation on train clients
+                    self.test() #testing on same dom and diff dom
+                    self.model.train()
+
+            else: #when r is != -1 and != None
+                
+                if true_round % self.args.r == 0:
+                    #! Save checkpoint if enabled, only for task 2. Fose si può usare anche per il task 4
+                    if self.args.framework == 'federated' and self.args.self_train != 'true' and self.args.name_checkpoint_to_save != None:
+                        self.save_checkpoint(self.args.num_epochs, true_round)
+
+                    print("\nTesting...\n")
+                    self.eval_train() #evaluation on train clients
+                    self.test() #testing on same dom and diff dom
+                    self.model.train()
+            
+        #==== After the trainig save the checkpoint if not alredy done ====
+        #Se siamo all'ultimo round, non è un multiplo di r, r è diverso da None, e non è l'ultimo valore della lista check_list
+        if self.args.r != None and self.args != -1: #has to be done before to handle none case
+            if (self.args.num_rounds + self.prev_rounds_executed) % self.args.r != 0:
+                #! Save checkpoint if enabled, only for task 2, forse si può usare anche per il task 4
+                if self.args.framework == 'federated' and self.args.self_train != 'true' and self.args.name_checkpoint_to_save != None:
+                    self.save_checkpoint(self.args.num_epochs, self.args.num_rounds + self.prev_rounds_executed)
+                
+                print("\nTesting...\n")
+                self.eval_train() #evaluation on train clients
+                self.test() #testing on same dom and diff dom
+                self.model.train()
 
         print("\nTraining finished!")
 
@@ -348,6 +363,8 @@ class Server:
             client.test(metric)
 
         miou = metric.get_results()['Mean IoU']
+        self.mious['eval_train'].append(miou)
+
         if self.args.wandb != None:
             wandb.log({'train_miou':miou})
         
@@ -359,11 +376,12 @@ class Server:
             if os.path.exists(path):
                 checkpoint = torch.load(path)
                 checkpoint['metrics_dict']['eval_train'] = metric
+                checkpoint['mious_dict'] = self.mious
                 torch.save(checkpoint, path)
                 print("Added eval_train metric in checkpoint")
 
         print(f'Mean IoU: {miou:.2%}')
-        self.mious['eval_train'].append(miou)
+        
   
 
     def test(self):
@@ -388,9 +406,11 @@ class Server:
             metric.reset()
             client.test(metric)
             miou = metric.get_results()['Mean IoU']
+            self.mious[client.name].append(miou)
 
             if checkpoint != None:
                 checkpoint['metrics_dict'][client.name] = metric
+                checkpoint['mious_dict'] = self.mious
                 torch.save(checkpoint, path)
                 print(f"Added {client.name} metric in checkpoint")
 
@@ -398,7 +418,7 @@ class Server:
                 wandb.log({client.name : miou})
 
             print(f'Mean IoU: {miou:.2%}')
-            self.mious[client.name].append(miou)
+            
 
 
     def load_server_model_on_client(self, client):
@@ -406,12 +426,15 @@ class Server:
     
 
     def save_checkpoint(self, epochs = None, rounds = None):
-        
+
+        self.mious['round'].append(rounds)
+
         checkpoint = {"model_state": self.model.state_dict(),
                     "actual_epochs_executed": epochs,
                     "actual_rounds_executed": rounds,
+                    "num_clients_per_round": self.args.clients_per_round,
                     "metrics_dict": {}, #these dicts will be filled with the metrics objects in the test() and eval_train() methods
-                    #"target_eval_miou": None, #TODO: qui salvare gli oggetti metrics invece di un singolo numero
+                    "mious_dict": self.mious,
                     "eval_dataset" : type(self.train_clients[0].test_dataset).__name__,
                     "train_dataset": type(self.test_clients[0].test_dataset).__name__,
                     "framework": self.args.framework}
@@ -425,14 +448,17 @@ class Server:
         print(f"\n=> Saving checkpoint at {path}.\n"
               f" - framework: {checkpoint['framework']}\n"
               f" - rounds executed: {checkpoint['actual_rounds_executed']}\n"
-              f" - epochs executed at each round: {checkpoint['actual_epochs_executed']}\n"
+              f" - num clients per round: {checkpoint['num_clients_per_round']}\n"
+              f" - epochs executed in each client: {checkpoint['actual_epochs_executed']}\n"
               )
 
-    def checkpoint_recap(self):
-        root1 = 'checkpoints'
-        root2 = 'idda'
-        path = os.path.join(root1, root2, self.args.name_checkpoint_to_save)
-        checkpoint = torch.load(path)
+    def checkpoint_recap(self, checkpoint = None):
+        if checkpoint == None:
+            root1 = 'checkpoints'
+            root2 = 'idda'
+            path = os.path.join(root1, root2, self.args.name_checkpoint_to_save)
+            checkpoint = torch.load(path)
+
         print("\nCheckpoint recap:")
         print(f" - framework: {checkpoint['framework']}")
 
@@ -441,14 +467,28 @@ class Server:
 
                   
         elif self.args.framework == 'federated':
-                  print(f" - local epochs executed for each client for each round: {checkpoint['actual_epochs_executed']}\n"
-                        f" - rounds executed: {checkpoint['actual_rounds_executed']}")
+                  print(f" - rounds executed: {checkpoint['actual_rounds_executed']}\n"
+                        f" - num clients per round: {checkpoint['num_clients_per_round']}\n"
+                        f" - local epochs executed for each client for each round: {checkpoint['actual_epochs_executed']}")
 
         print(f" - Eval_miou: {checkpoint['metrics_dict']['eval_train'].get_results()['Mean IoU']:.2%}"
-              f"\n - Test_miou: {checkpoint['metrics_dict']['test_same_dom'].get_results()['Mean IoU']:.2%}"
-              f"\n - Test_miou: {checkpoint['metrics_dict']['test_diff_dom'].get_results()['Mean IoU']:.2%}"
+              f"\n - Test_same_Dom miou: {checkpoint['metrics_dict']['test_same_dom'].get_results()['Mean IoU']:.2%}"
+              f"\n - Test_Diff_Dom miou: {checkpoint['metrics_dict']['test_diff_dom'].get_results()['Mean IoU']:.2%}"
               )
 
+    def load_model_to_continue_train_task2(self):
+        root1 = 'checkpoints'
+        root2 = 'idda'
+        path = os.path.join(root1, root2, self.args.checkpoint_to_load)
+        checkpoint = torch.load(path)
+        print(f"\n=> Loading the following checkpoint:")
+        self.checkpoint_recap(checkpoint)
+        self.model.load_state_dict(checkpoint['model_state'])
+        self.prev_rounds_executed = checkpoint['actual_rounds_executed']
+        self.mious = checkpoint['mious_dict']
+
+ 
+    #! nel metodo successivo magari chiamare chekpoint recap invece di tutte quelle print
     def load_model_to_test_results(self):
         root1 = 'checkpoints'
         root2 = 'idda'
@@ -488,14 +528,20 @@ class Server:
 
     def download_mious_as_csv(self):
         dict_to_csv = self.mious
-        dict_to_csv['epoch'] = [i*self.args.r for i in range(1, int(self.args.num_rounds / self.args.r) + 1)]
-        dict_to_csv['epoch'].append(self.args.num_rounds)
+        #if self.args.r == -1:
+        #    dict_to_csv['epoch'] = self.check_list
+        #else:
+        #    dict_to_csv['epoch'] = [i*self.args.r for i in range(1, int(self.args.num_rounds / self.args.r) + 1)]
+        
+        #dict_to_csv['epoch'].append(self.args.num_rounds)
+        
         df = pd.DataFrame(dict_to_csv)
-        df = df[[df.columns[-1]] + list(df.columns[:-1])] #put the epoch column at the beginning
+        #df = df[[df.columns[-1]] + list(df.columns[:-1])] #put the epoch column at the beginning
         root = 'csv_mious'
         epochs = str(self.args.num_epochs)
-        rounds = str(self.args.num_rounds)
-        file = 'mious_e' + epochs + '_r' + rounds+'.csv'
+        rounds = str(self.args.num_rounds + self.prev_rounds_executed)
+        num_clients = str(self.args.clients_per_round)
+        file = 'mious_cpr'+num_clients+'e_' + epochs + '_r' + rounds+'.csv'
         path = os.path.join(root,file)
         df.to_csv(path, index=False)
         print("Saved results in csv file ", path)    

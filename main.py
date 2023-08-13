@@ -489,8 +489,8 @@ def main():
             train_clients, test_clients = gen_clients(args, train_datasets, test_train_datasets, test_datasets, model)
             server = Server(args, train_clients, test_clients, model, metrics, config)
             server.train()
-            server.eval_train()
-            server.test()
+            #server.eval_train()
+            #server.test()
             if args.name_checkpoint_to_save != None:
                 server.checkpoint_recap()
             if args.framework == 'federated' and args.r != None:
