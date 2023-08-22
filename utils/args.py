@@ -37,6 +37,7 @@ def get_parser():
     #Task 4
     parser.add_argument('--self_train', type=str, default='false', help = 'set true if you want to use self train loss.')
     parser.add_argument('--T', type=int, default=None, help='num. of round between each teacher model update.')
+    parser.add_argument('--source_trained_ckpt', type=str, default=None, help='the name of the checkpoint of the model pretrained on gta. Include .pth.tar' )
 
     #Task 5
     parser.add_argument('--our_self_train', type=str, default='false', help = 'Use our method for getting pseudolabels.')

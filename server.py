@@ -19,6 +19,7 @@ class Server:
         self.test_clients = test_clients #lista con due elementi (istanza della classe client (test_client = True))
         #self.selected_clients = [] #client che vengono selezionati ad ogni round
         self.model = model #da passare poi al client
+
         
         self.prev_rounds_executed = 0 #useful if continue training from a checkpoint
         
@@ -28,29 +29,36 @@ class Server:
         
         # ==== Loading the checkpoint if enabled====
         if self.args.checkpoint_to_load != None:
-            if self.args.self_train == 'true' or self.args.our_self_train == 'true': #load a model trained on source dataset
+            print("Continue training from a checkpoint...")
+            #task 4
+            if self.args.self_train == 'true':
+                self.model.eval()
+                self.teacher_model = copy.deepcopy(model) #initialize a teacher model in eval mode (it is not pretrained yet)
+                self.model.train()
+
+            self.load_model_to_continue_train_task_2_4() #load a model to continue the training
+
+        #Task 4: if a checkpoint to continue the training is not defined, a source trained model is loaded from a checkpoint
+        if self.args.self_train == 'true':
+            if self.args.source_trained_ckpt != None and self.args.checkpoint_to_load == None:
+                print("Loading a source trained model...")
                 self.load_source_trained_model()
-            else:
-                self.load_model_to_continue_train_task2() #load a model to test the performances
-        
+                self.model.eval() #da errore se copio il modello in train mode e poi lo cambio in eval, quindi lo copio in eval mode e poi lo cambio in train mode
+                self.teacher_model = copy.deepcopy(model) #create a pre-trained teacher model
+                self.model.train()
+            
         self.metrics = metrics
         self.model_params_dict = copy.deepcopy(self.model.state_dict())
-        
+
         self.client_selector_custom = ClientSelector(self.train_clients)
 
-        #Task 4
-        if self.args.self_train == 'true':
-            if self.args.checkpoint_to_load == None:
-                sys.exit('An error occurred: you must specify a checkpoint to load if in self_train mode!')
-            self.model.eval() #da errore se copio il modello in train mode e poi lo cambio in eval, quindi lo copio in eval mode e poi lo cambio in train mode
-            self.teacher_model = copy.deepcopy(model) #create a pre-trained teacher model
-            self.model.train()
-        
         if self.args.our_self_train == 'true': #pseudo labels before transforms
             if self.args.checkpoint_to_load == None:
                 sys.exit('An error occurred: you must specify a checkpoint to load if in self_train mode!')
             self.teacher_model = copy.deepcopy(model) #creo un teacher model allenato
         
+        self.num_teacher_updates = 0
+
         #Task 5
         """if self.args.framework == 'federated':
             self.aggregator = Aggregator(self.args.sigma)"""
@@ -241,11 +249,6 @@ class Server:
         return averaged_sol_n #è un model_state_dict
 
 
-
-            
-        
-    
-
     def update_model(self, updates):
         #chiama aggregate() che restituisce new_state_dict
         new_model_parmas = self._aggregate(updates)
@@ -283,9 +286,10 @@ class Server:
 
             #Task 4 - updating the teacher model
             if self.args.self_train == 'true' and self.args.T != None:
-                if round % self.args.T == 0: #ogni T round (e a round 0)
+                if round % self.args.T == 0: #ogni T round (e a round 0) #! questo round dovrebbe essere il true round? No perchè l'update viene fatto all'inizio del round successivo quindi quello giusto
                     print(f"Begin of round {true_round}. Updating teacher model...")
                     self.teacher_model.load_state_dict(self.model_params_dict) #aggiorno il teacher model (lo rendo uguale a global model), the mode of the teacher model stays eval
+                    self.num_teacher_updates += 1
 
             updates, round_avg_loss = self.train_round() #crea un lista [(num_samples, model_state_dict),...,]           
             
@@ -295,8 +299,8 @@ class Server:
             if self.args.r == -1: #if you want to use a list of rounds
             
                 if round+1 == self.check_list[i]:
-                    #! Save checkpoint if enabled, only for task 2, forse si può usare anche per il task 4
-                    if self.args.framework == 'federated' and self.args.self_train != 'true' and self.args.name_checkpoint_to_save != None:
+                    # Save checkpoint if enabled (for task 2 and 4)
+                    if self.args.framework == 'federated' and self.args.name_checkpoint_to_save != None:
                         self.save_checkpoint(self.args.num_epochs, true_round)
 
                     print("\nTesting...\n")
@@ -310,8 +314,8 @@ class Server:
             elif self.args.r == None:
                 
                 if round+1 == self.args.num_rounds: #if we are in the last round and r is not specified
-                    #! Save checkpoint if enabled, only for task 2, forse si può usare anche per il task 4
-                    if self.args.framework == 'federated' and self.args.self_train != 'true' and self.args.name_checkpoint_to_save != None:
+                    # Save checkpoint if enabled (for task 2 and 4)
+                    if self.args.framework == 'federated' and self.args.name_checkpoint_to_save != None:
                         self.save_checkpoint(self.args.num_epochs, true_round) # save checkpoint and test only at last epoch
                     
                     print("\nTesting...\n")
@@ -322,8 +326,8 @@ class Server:
             else: #when r is != -1 and != None
                 
                 if true_round % self.args.r == 0:
-                    #! Save checkpoint if enabled, only for task 2. Fose si può usare anche per il task 4
-                    if self.args.framework == 'federated' and self.args.self_train != 'true' and self.args.name_checkpoint_to_save != None:
+                    # Save checkpoint if enabled (for task 2 and 4)
+                    if self.args.framework == 'federated' and self.args.name_checkpoint_to_save != None:
                         self.save_checkpoint(self.args.num_epochs, true_round)
 
                     print("\nTesting...\n")
@@ -335,8 +339,8 @@ class Server:
         #Se siamo all'ultimo round, non è un multiplo di r, r è diverso da None, e non è l'ultimo valore della lista check_list
         if self.args.r != None and self.args != -1: #has to be done before to handle none case
             if (self.args.num_rounds + self.prev_rounds_executed) % self.args.r != 0:
-                #! Save checkpoint if enabled, only for task 2, forse si può usare anche per il task 4
-                if self.args.framework == 'federated' and self.args.self_train != 'true' and self.args.name_checkpoint_to_save != None:
+                # Save checkpoint if enabled (for task 2 and 4)
+                if self.args.framework == 'federated' and self.args.name_checkpoint_to_save != None:
                     self.save_checkpoint(self.args.num_epochs, self.args.num_rounds + self.prev_rounds_executed)
                 
                 print("\nTesting...\n")
@@ -438,6 +442,10 @@ class Server:
                     "eval_dataset" : type(self.train_clients[0].test_dataset).__name__,
                     "train_dataset": type(self.test_clients[0].test_dataset).__name__,
                     "framework": self.args.framework}
+        #Task4
+        if self.args.self_train == 'true':
+            checkpoint['teacher_model_state'] = self.teacher_model.state_dict()
+            checkpoint['num_teacher_updates'] = self.num_teacher_updates
         
         root1 = 'checkpoints'
         root2 = 'idda'
@@ -449,8 +457,10 @@ class Server:
               f" - framework: {checkpoint['framework']}\n"
               f" - rounds executed: {checkpoint['actual_rounds_executed']}\n"
               f" - num clients per round: {checkpoint['num_clients_per_round']}\n"
-              f" - epochs executed in each client: {checkpoint['actual_epochs_executed']}\n"
+              f" - epochs executed in each client: {checkpoint['actual_epochs_executed']}"
               )
+        if self.args.self_train == 'true':
+            print(f" - Num teacher updates: {checkpoint['num_teacher_updates']}")
 
     def checkpoint_recap(self, checkpoint = None):
         if checkpoint == None:
@@ -475,8 +485,10 @@ class Server:
               f"\n - Test_same_Dom miou: {checkpoint['metrics_dict']['test_same_dom'].get_results()['Mean IoU']:.2%}"
               f"\n - Test_Diff_Dom miou: {checkpoint['metrics_dict']['test_diff_dom'].get_results()['Mean IoU']:.2%}"
               )
+        if self.args.self_train == 'true':
+            print(f" - Num teacher updates: {checkpoint['num_teacher_updates']}")
 
-    def load_model_to_continue_train_task2(self):
+    def load_model_to_continue_train_task_2_4(self):
         root1 = 'checkpoints'
         root2 = 'idda'
         path = os.path.join(root1, root2, self.args.checkpoint_to_load)
@@ -486,6 +498,9 @@ class Server:
         self.model.load_state_dict(checkpoint['model_state'])
         self.prev_rounds_executed = checkpoint['actual_rounds_executed']
         self.mious = checkpoint['mious_dict']
+        if self.args.self_train == 'true':
+            self.teacher_model.load_state_dict(checkpoint['teacher_model_state'])
+            self.num_teacher_updates = checkpoint['num_teacher_updates']
 
  
     #! nel metodo successivo magari chiamare chekpoint recap invece di tutte quelle print
@@ -512,7 +527,7 @@ class Server:
     def load_source_trained_model(self):
         root1 = 'checkpoints'
         root2 = 'gta'
-        path = os.path.join(root1, root2, self.args.checkpoint_to_load)
+        path = os.path.join(root1, root2, self.args.source_trained_ckpt)
         checkpoint = torch.load(path)
         print(f"\n=> Loading the model trained on {checkpoint['train_dataset']}:"
                   f"\n - epochs executed: {checkpoint['actual_epochs_executed']}"
@@ -541,7 +556,8 @@ class Server:
         epochs = str(self.args.num_epochs)
         rounds = str(self.args.num_rounds + self.prev_rounds_executed)
         num_clients = str(self.args.clients_per_round)
-        file = 'mious_cpr'+num_clients+'e_' + epochs + '_r' + rounds+'.csv'
+        task = "4" if self.args.self_train == 'true' else "2"
+        file = 'mious_cpr'+num_clients+'e_' + epochs + '_r' + rounds+'_t'+task+'.csv'
         path = os.path.join(root,file)
         df.to_csv(path, index=False)
         print("Saved results in csv file ", path)    
