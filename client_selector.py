@@ -4,7 +4,7 @@ import numpy as np
 class ClientSelector():
 
 
-    def __init__(self, train_clients, alpha: float = 0.2, beta: float = 0.4, llambda: float = 1.0):
+    def __init__(self, train_clients, alpha: float = 0.0, beta: float = 0.4, llambda: float = 1.0):
         '''
         Initialize a ClientSelection object that can handle both FedAvg and FedCCE. It manages all
         the client selection pipeline. The gamma parameter will be the complement to 1 of alpha and
@@ -16,7 +16,7 @@ class ClientSelector():
             Weight related to the number of samples of the client. It must be comprised in `[0, 0.5]`;
         
         beta : float, default = 0.4
-            Weight realted to the entropy of the client. It must be comprised in `[0, 0.5]`;
+            Weight related to the entropy of the client. It must be comprised in `[0, 0.5]`;
         
         llambda : float, default = 1.0
             Lambda parameter in the sigmoid function.

@@ -50,7 +50,7 @@ class Server:
         self.metrics = metrics
         self.model_params_dict = copy.deepcopy(self.model.state_dict())
 
-        self.client_selector_custom = ClientSelector(self.train_clients)
+        self.client_selector_custom = ClientSelector(self.train_clients, beta = self.args.beta, llambda = self.args.llambda)
 
         if self.args.our_self_train == 'true': #pseudo labels before transforms
             if self.args.checkpoint_to_load == None:
