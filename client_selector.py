@@ -112,6 +112,12 @@ class ClientSelector():
                 
                 # Sum the entropies of the clients.
                 tot += client_entropy[client][weight]
+
+        elif weight == 'rel':
+            for client in client_entropy.keys():
+                
+                # Sum of loss of the clients.
+                tot += client_entropy[client]['loss']
         
         else:
 
@@ -121,7 +127,10 @@ class ClientSelector():
                 # Sum the sigmoid of losses of the clients.
                 tot += self._get_sigmoid(client_entropy[client][weight], self.llambda)
 
+        
+
         return tot
+    
     
 
     def _get_sigmoid(self, x: np.dtype, llambda: float = 1) -> np.dtype:
@@ -183,6 +192,31 @@ class ClientSelector():
                 client_weight[client] = client_entropy[client][weight] / tot_entropy
 
             return client_weight
+        
+        elif weight == 'rel':
+            print('\nIn Rel\n')
+            tot_loss = self._compute_tot(client_entropy, 'rel')
+            
+            client_rel_loss = {}
+            for client in client_entropy.keys():
+                client_rel_loss[client] = client_entropy[client]['loss'] / tot_loss
+            
+            mean_rel_losses = 1/len(client_rel_loss.keys())
+            std_rel_losses = np.std(list(client_rel_loss.values()))
+
+            client_sigmoid = {}
+            tot_sigmoid = 0
+            for client in client_entropy.keys():
+                client_sigmoid[client] = self._get_sigmoid(client_rel_loss[client] - mean_rel_losses, self.llambda)
+                tot_sigmoid += client_sigmoid[client]
+
+            client_weight = {}
+            for client in client_entropy.keys():
+                client_weight[client] = client_sigmoid[client] / tot_sigmoid
+            
+            return client_weight
+
+
 
         else:
 
@@ -223,7 +257,7 @@ class ClientSelector():
         # Get all the weights for each client.
         client_img_weight_dict = self._get_weights_image(client_num_samples)
         client_entropy_weight_dict = self._get_weights_entropy_loss(client_entropy, 'entropy')
-        client_loss_weight_dict = self._get_weights_entropy_loss(client_entropy, 'loss')
+        client_loss_weight_dict = self._get_weights_entropy_loss(client_entropy, 'rel')
 
         client_probs = {client: 0 for client in client_entropy.keys()}
 
@@ -234,6 +268,12 @@ class ClientSelector():
             client_probs[client] += (self.alpha * client_img_weight_dict[client] + \
                                     self.beta  * client_entropy_weight_dict[client] + \
                                     self.gamma * client_loss_weight_dict[client]) / (1/len(client_entropy.keys())) * (1 / len(self.train_clients))
+            
+            client_probs[client] += (self.alpha * client_img_weight_dict[client] + \
+                                    self.beta  * client_entropy_weight_dict[client] + \
+                                    self.gamma * client_loss_weight_dict[client]) * len(client_entropy.keys()) / len(self.train_clients)
+            
+            #client_probs[clients] 
             
         print("\nclient_probs", client_probs)
         dict_p = {client.name: 1/len(self.train_clients) for client in self.train_clients}
