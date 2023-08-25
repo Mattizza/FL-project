@@ -202,12 +202,12 @@ class ClientSelector():
                 client_rel_loss[client] = client_entropy[client]['loss'] / tot_loss
             
             mean_rel_losses = 1/len(client_rel_loss.keys())
-            std_rel_losses = np.std(list(client_rel_loss.values()))
+            #std_rel_losses = np.std(list(client_rel_loss.values()))
 
             client_sigmoid = {}
             tot_sigmoid = 0
             for client in client_entropy.keys():
-                client_sigmoid[client] = self._get_sigmoid(client_rel_loss[client] - mean_rel_losses, self.llambda)
+                client_sigmoid[client] = self._get_sigmoid((client_rel_loss[client] - mean_rel_losses), self.llambda)
                 tot_sigmoid += client_sigmoid[client]
 
             client_weight = {}
@@ -265,9 +265,9 @@ class ClientSelector():
         for client in client_entropy.keys():
 
             # Compute the probabilities.
-            client_probs[client] += (self.alpha * client_img_weight_dict[client] + \
-                                    self.beta  * client_entropy_weight_dict[client] + \
-                                    self.gamma * client_loss_weight_dict[client]) / (1/len(client_entropy.keys())) * (1 / len(self.train_clients))
+            #client_probs[client] += (self.alpha * client_img_weight_dict[client] + \
+            #                        self.beta  * client_entropy_weight_dict[client] + \
+            #                        self.gamma * client_loss_weight_dict[client]) / (1/len(client_entropy.keys())) * (1 / len(self.train_clients))
             
             client_probs[client] += (self.alpha * client_img_weight_dict[client] + \
                                     self.beta  * client_entropy_weight_dict[client] + \
