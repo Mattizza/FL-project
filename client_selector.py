@@ -183,51 +183,50 @@ class ClientSelector():
         if weight == 'entropy':
 
             # Compute the total entropy.
-            tot_entropy = self._compute_tot(client_entropy, weight)
+            #tot_entropy = self._compute_tot(client_entropy, weight)
 
-            # Iterate over the clients, compute and assign the weight corresponding to the relative entropy.
-            for client in client_entropy.keys():
-        
-                # Access the client     # Access the entropy and get the relative weight.
-                client_weight[client] = client_entropy[client][weight] / tot_entropy
+            entropies = [client_entropy[client]['entropy'] for client in client_entropy.keys()]
 
-            return client_weight
-        
-        elif weight == 'rel':
-            print('\nIn Rel\n')
-            tot_loss = self._compute_tot(client_entropy, 'rel')
-            
-            client_rel_loss = {}
-            for client in client_entropy.keys():
-                client_rel_loss[client] = client_entropy[client]['loss'] / tot_loss
-            
-            mean_rel_losses = 1/len(client_rel_loss.keys())
-            std_rel_losses = np.std(list(client_rel_loss.values()))
+            mean_entropies = np.mean(entropies)
+            std_entropies = np.std(entropies)
 
             client_sigmoid = {}
             tot_sigmoid = 0
             for client in client_entropy.keys():
-                client_sigmoid[client] = self._get_sigmoid((client_rel_loss[client] - mean_rel_losses)/std_rel_losses, self.llambda)
+                client_sigmoid[client] = self._get_sigmoid((client_entropy[client]['entropy'] - mean_entropies)/std_entropies, self.llambda)
                 tot_sigmoid += client_sigmoid[client]
 
             client_weight = {}
             for client in client_entropy.keys():
                 client_weight[client] = client_sigmoid[client] / tot_sigmoid
-            
+
             return client_weight
-
-
-
-        else:
-
-            # Compute the sigmoid of the losses for each cluster.
-            tot_loss = self._compute_tot(client_entropy, weight)
-
-            # Iterate over the clients, compute and assign the weight corresponding to the relative sigmoid of the loss.
-            for client in client_entropy.keys():
         
-                # Access the client     # Access the loss and get the relative weight.
-                client_weight[client] = self._get_sigmoid(client_entropy[client][weight], self.llambda) / tot_loss
+        elif weight == 'loss':
+            print('\nIn Rel\n')
+            #tot_loss = self._compute_tot(client_entropy, 'rel')
+            
+            #client_rel_loss = {}
+            #for client in client_entropy.keys():
+            #    client_rel_loss[client] = client_entropy[client]['loss'] / tot_loss
+            
+            #mean_rel_losses = 1/len(client_rel_loss.keys())
+            #std_rel_losses = np.std(list(client_rel_loss.values()))
+            
+            losses = [client_entropy[client]['loss'] for client in client_entropy.keys()]
+
+            mean_losses = np.mean(losses)
+            std_losses = np.std(losses)
+
+            client_sigmoid = {}
+            tot_sigmoid = 0
+            for client in client_entropy.keys():
+                client_sigmoid[client] = self._get_sigmoid((client_entropy[client]['loss'] - mean_losses)/std_losses, self.llambda)
+                tot_sigmoid += client_sigmoid[client]
+
+            client_weight = {}
+            for client in client_entropy.keys():
+                client_weight[client] = client_sigmoid[client] / tot_sigmoid
 
             return client_weight
 
