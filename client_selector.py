@@ -256,7 +256,7 @@ class ClientSelector():
         # Get all the weights for each client.
         client_img_weight_dict = self._get_weights_image(client_num_samples)
         client_entropy_weight_dict = self._get_weights_entropy_loss(client_entropy, 'entropy')
-        client_loss_weight_dict = self._get_weights_entropy_loss(client_entropy, 'rel')
+        client_loss_weight_dict = self._get_weights_entropy_loss(client_entropy, 'loss')
 
         client_probs = {client: 0 for client in client_entropy.keys()}
 
