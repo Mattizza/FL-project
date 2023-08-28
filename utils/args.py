@@ -45,9 +45,17 @@ def get_parser():
     parser.add_argument('--use_entropy', type=str, default='false', help = 'set true if you need to use entropy.')
     parser.add_argument('--custom_client_selection', type=str, default='false', help = 'set true to use custom client selection.')
     
-    #Task5 Client Selection
+    #Task 5 Client Selection
     parser.add_argument('--beta', type=float, default=0.5, help = 'Weight related to the entropy of the clients. It must be comprised in [0, 1]')
     parser.add_argument('--llambda', type=float, default=1.0, help = 'Lambda parameter in the sigmoid function.')
+
+    #Task 5 Weight Aggregation
+    parser.add_argument('--custom_weight_agg', type=str, default=None, help = 'Set true to use custom weight aggregation.')
+    parser.add_argument('--llambda_weight_agg', type=float, default=1.0, help = 'Lambda parameter in the sigmoid function for the weight aggregation.')
+    parser.add_argument('--beta_weight_agg', type=float, default=0.5, help = 'Weight related to the entropy of the clusters. It must be comprised in [0, 1]')
+    parser.add_argument('--use_clustered_weight_agg', type=str, default=None, help = 'set true if you want to use clustering in the weight aggregation.')
+    parser.add_argument('--alpha_weight_agg', type=float, default=0.0, help = 'Total number of clusters.')
+
 
 
     #wandb args

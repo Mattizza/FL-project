@@ -19,7 +19,7 @@ class ClusterMaker():
         self.styles_mapping = styles_mapping #{"style": styles, "id": self.server.styleaug.styles_names}
         self.cluster_mapping = {}
         self.k_means_model = None
-        self.num_clusters = len(self.cluster_mapping.keys())
+        self.num_clusters = None
         self.doPca = False
         self.clients = clients
         self.isFuzzy = False
@@ -64,6 +64,8 @@ class ClusterMaker():
                 if client.name in self.cluster_mapping[cluster_id]:
                     client.cluster_id = int(cluster_id)
                     break
+        #set num_clusters
+        self.num_clusters = len(self.cluster_mapping.keys())
     
     def fit_transform_pipe_scaler_pca(self, X, n_components = 3):
         self.pipe_scaler_pca = Pipeline(steps=[('scaler', StandardScaler()), ('pca', PCA(n_components = n_components))])
