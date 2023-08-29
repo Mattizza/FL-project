@@ -62,6 +62,8 @@ class Client:
         self.cluster_id = None
         self.entropy_last_epoch = None
         self.loss_last_epoch = None
+        if self.train_dataset != None:
+            self.num_train_samples = len(self.train_dataset)
         
     @staticmethod
     def updatemetric(metric, outputs, labels):
@@ -115,7 +117,9 @@ class Client:
                 batch_entropies = scipy.stats.entropy(probs.cpu().detach().numpy(), axis = 1).reshape(probs.shape[0] ,-1).mean(axis = 1) #dim = [bs,]
                 tot_entropies = np.concatenate((tot_entropies, batch_entropies))
                 self.entropy_last_epoch = tot_entropies.mean()
+                
                 self.loss_last_epoch = cumu_loss /len(self.train_loader)
+                
 
             if self.args.wandb != None and self.args.framework == 'centralized':
                 wandb.log({"batch loss": loss.item()})
@@ -144,9 +148,14 @@ class Client:
                 self.n_10th_steps.append(self.count)
                 print(f'epoch {cur_epoch + 1} / {self.args.num_epochs}, step {cur_step + 1} / {self.n_total_steps}, loss = {loss.mean():.3f}')
         
+        #debugging
+        if cur_epoch == self.args.num_epochs-1 and self.args.use_entropy == 'true' and self.args.custom_weight_agg == 'true':
+            print('\nloss dal singolo client: ', self.loss_last_epoch)
+            print('entropy dal singolo client: ', self.entropy_last_epoch)
+            print()
+            #
         return cumu_loss /len(self.train_loader)
     
-    #TODO: funzione da correggere dopo il cambiamento di opt e sched creati on the fly
     def run_epoch_self_train(self, cur_epoch, optimizer, n_steps):
         cumu_loss = 0
         print('Epoch', cur_epoch + 1)

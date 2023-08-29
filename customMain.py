@@ -314,7 +314,7 @@ def main():
     
     #compute clusters
     print('\nComputing clusters...')
-    num_clusters = server.compute_clusters() #compute clusters and return the tot num of clusters
+    server.compute_clusters() #compute clusters and return the tot num of clusters
     print('Done.')
     
     server.train()

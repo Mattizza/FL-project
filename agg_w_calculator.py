@@ -35,7 +35,7 @@ class AggWeightCalculator():
             
             if metric == 'loss':
                 #debugging
-                print('loss: ', client.get_entropy_dict())
+                print(f'loss {client.name}: {client.get_entropy_dict()}')
                 metrics.append(client.get_entropy_dict()['loss']) #salva la loss dell'ultimo epoch del client
             elif metric == 'entropy':
                 metrics.append(client.get_entropy_dict()['entropy']) #salva l'entropy dell'ultimo epoch del client
@@ -46,9 +46,9 @@ class AggWeightCalculator():
 
         #debugg
         if metric == 'loss':
-            print('loss: ', metrics)
+            print('\nloss: ', metrics)
         elif metric == 'entropy':
-            print('entropy: ', metrics)
+            print('\nentropy: ', metrics)
 
         num_clients_in_cluster = [0]*self.tot_num_cluster
         for client_ix, cluster_id in enumerate (clusters_of_selected_clients):
@@ -64,15 +64,14 @@ class AggWeightCalculator():
                 cluster_metrics.append(np.nan)
         
         #Calcola la media delle medie dei cluster pesata in base al numero di client
-        mean_cluster_metric_pesata_num_client = np.nansum([cluster_metrics[cluster_id]*num_clients_in_cluster[cluster_id] for cluster_id in range(self.tot_num_cluster)])/len(metrics)
+        #mean_cluster_metric_pesata_num_client = np.nansum([cluster_metrics[cluster_id]*num_clients_in_cluster[cluster_id] for cluster_id in range(self.tot_num_cluster)])/len(metrics)
+        #calcola la media delle medie dei cluster non pesata
+        mean_cluster_metric = np.nanmean(cluster_metrics)
 
-        #! bisogna aggiungere un modo per calcolare la std pesata in base al numero di client usati per calcolarla, come viene fatto per la media
         std_cluster_metric = np.nanstd(cluster_metrics)
 
-        llambda = 1
-        sigmoid = lambda x: 1/(1+np.exp(-llambda * x))
-        
-        cluster_metrics_sigmoid = sigmoid((cluster_metrics - mean_cluster_metric_pesata_num_client)/std_cluster_metric)
+        sigmoid = lambda x: 1/(1+np.exp(-self.llambda * x))
+        cluster_metrics_sigmoid = sigmoid((cluster_metrics - mean_cluster_metric)/std_cluster_metric)
 
         tot_cluster_metrics_sigmoid = np.nansum(cluster_metrics_sigmoid)
 
@@ -96,10 +95,13 @@ class AggWeightCalculator():
 
         if self.beta != 0:
             clients_w_entropy =  np.array(self.get_weight(selected_clients, metric = 'entropy'))
+            print('clients_w_entropy: ', clients_w_entropy)
         
         if self.gamma != 0:
             clients_w_loss = np.array(self.get_weight(selected_clients, metric = 'loss'))
+            print('clients_w_loss: ', clients_w_loss)
 
         clients_final_w = self.alpha * clients_w_num_samples + self.beta * clients_w_entropy + self.gamma * clients_w_loss 
+        print('clients_final_w: ', clients_final_w)
         
         return clients_final_w

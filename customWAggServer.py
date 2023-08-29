@@ -155,8 +155,6 @@ class CustomWaggServer:
             num_samples_each_client.append(num_samples)
             avg_losses.append(avg_loss)
 
-        #debugging
-        print('Dict client entropy in train round', self.clients_entropy)
         
         round_avg_loss = np.average(avg_losses, weights = num_samples_each_client)
 
@@ -166,61 +164,6 @@ class CustomWaggServer:
 
         return updates, round_avg_loss #update is a list of model.state_dict(), each one of a different client
 
-
-    def train_round_entropy(self):
-        """
-            This method trains the model with the dataset of the clients. It handles the training at single round level
-            :param clients: list of all the clients to train
-            :return: model updates gathered from the clients, to be aggregated
-        """
-        """
-        Fa il train sul trainClient (train.txt)
-        """
-        num_samples_each_client = []
-        updates = []
-        avg_losses = []
-
-        clients_entropy = {}
-        client_num_samples = {}
-        client_model = {}
-        for i, client in enumerate(self.select_clients()):
-            print(client.name)
-            self.load_server_model_on_client(client)
-            
-            if self.args.self_train == 'true':
-                client.self_train_loss.set_teacher(self.teacher_model)#passa in teacher model alla loss del client
-            
-            elif self.args.our_self_train == 'true':
-                client.set_teacherModel(self.teacher_model)
-            
-            num_samples, update , avg_loss= client.train(self.config)
-
-            #!
-            #self.clusters = {'T_0_A' : 0, 'T_1_E': 2}
-            
-            clients_entropy[client.name] = {'loss': avg_loss,
-                                            'cluster': client.cluster_id,
-                                            'entropy': client.entropy_last_epoch
-                                            }
-            client_num_samples[client.name] = num_samples
-
-            client_model[client.name] = update
-
-            clusters = np.unique(list(self.clusters.keys()))
-
-
-            num_samples_each_client.append(num_samples)
-            avg_losses.append(avg_loss)
-
-        
-        self._newAggregate(clients_entropy, client_num_samples, clusters, self.args.sigma, client_model)
-        round_avg_loss = np.average(avg_losses, weights = num_samples_each_client)
-
-        #Wandb
-        if self.args.wandb != None and self.args.framework == 'federated':
-                wandb.log({"round loss": round_avg_loss})
-
-        return updates, round_avg_loss #update is a list of model.state_dict(), each one of a different client
     
     def _aggregate(self, updates):
         """
@@ -251,8 +194,6 @@ class CustomWaggServer:
             return averaged_sol_n #è un model_state_dict
         
     def custom_aggregation(self, updates):
-        #debugging
-        print('Dict client entropy in custom aggregation', self.clients_entropy)
 
         clients_final_w = self.agg_weight_calculator.get_final_w(self.selected_clients)
 
@@ -471,10 +412,6 @@ class CustomWaggServer:
                     "eval_dataset" : type(self.train_clients[0].test_dataset).__name__,
                     "train_dataset": type(self.test_clients[0].test_dataset).__name__,
                     "framework": self.args.framework}
-        #Task4
-        if self.args.self_train == 'true':
-            checkpoint['teacher_model_state'] = self.teacher_model.state_dict()
-            checkpoint['num_teacher_updates'] = self.num_teacher_updates
         
         root1 = 'checkpoints'
         root2 = 'idda'
@@ -488,8 +425,6 @@ class CustomWaggServer:
               f" - num clients per round: {checkpoint['num_clients_per_round']}\n"
               f" - epochs executed in each client: {checkpoint['actual_epochs_executed']}"
               )
-        if self.args.self_train == 'true':
-            print(f" - Num teacher updates: {checkpoint['num_teacher_updates']}")
 
     def checkpoint_recap(self, checkpoint = None):
         if checkpoint == None:
@@ -572,6 +507,7 @@ class CustomWaggServer:
 
     def download_mious_as_csv(self):
         dict_to_csv = self.mious
+        print(dict_to_csv)
         #if self.args.r == -1:
         #    dict_to_csv['epoch'] = self.check_list
         #else:
