@@ -19,7 +19,7 @@ from tqdm import tqdm
 import torch.nn.functional as F
 import scipy
 
-from style_extractor import StyleExtractor
+from utils.style_extractor import StyleExtractor
 
 
 class Client:
@@ -128,7 +128,7 @@ class Client:
             # each mini-batch.
             #wandb.log({"loss": loss.mean()})
             
-            # We are considering 10 batch at a time. TO DO: define a way to handle different values.
+            # We are considering 10 batch at a time.
             # We are considering n_steps batch at a time.
             if (cur_step + 1) % n_steps == 0 or cur_step + 1 == self.n_total_steps:
 
@@ -163,7 +163,6 @@ class Client:
                 
             self.n_total_steps = len(self.train_loader)
 
-            #? è corretto che queste immagini abbiano subito le stesse transforms? Sì
             images = images.to(self.device, dtype = torch.float32) 
             outputs = self._get_outputs(images)
             
@@ -175,12 +174,7 @@ class Client:
             loss.backward()
             optimizer.step()
             
-            #!commented since we don't want to log the loss of each client if in self-training since we are always in federated
-            #if self.args.wandb != None and self.args.framework == 'centralized':
-            #    wandb.log({"batch loss": loss.item()})
-
-            
-            # We are considering 10 batch at a time. TO DO: define a way to handle different values.
+            # We are considering 10 batch at a time.
             # We are considering n_steps batch at a time.
             if (cur_step + 1) % n_steps == 0 or cur_step + 1 == self.n_total_steps:
 
@@ -301,7 +295,7 @@ class Client:
             if self.args.wandb != None and self.args.framework == 'centralized':
                 wandb.log({"loss": avg_loss, "epoch": epoch})
             
-            # Here we are simply computing how many steps do we need to complete an epoch.
+            # computing how many steps do we need to complete an epoch.
             self.n_epoch_steps.append(self.n_epoch_steps[0] * (epoch + 1))
 
         update = self.generate_update()
@@ -332,11 +326,15 @@ class Client:
         """
         self.model.eval()
         with torch.no_grad():
-            img = self.train_dataset[ix][0].cuda()
-            outputLogit = self.model(img.view(1, 3, 512, 928))['out'][0]
+            #img = self.train_dataset[ix][0].cuda()
+            img = self.test_dataset[ix][0].cuda()
+            #outputLogit = self.model(img.view(1, 3, 512, 928))['out'][0]
+            outputLogit = self.model(img.view(1, 3, 1080, 1920))['out'][0]
             prediction = outputLogit.argmax(0)
             label2color = Label2Color(idda_16_cmap())
             pred_mask = label2color(prediction.cpu()).astype(np.uint8)
+            plt.figure(figsize=(20,10))
+            plt.axis('off')
             plt.imshow(denormalize(img.cpu()).permute(1,2,0))
             plt.imshow(pred_mask, alpha = alpha)
 

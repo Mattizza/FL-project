@@ -6,9 +6,8 @@ class ClientSelector():
 
     def __init__(self, train_clients, alpha: float = 0.0, beta: float = 0.4, llambda: float = 1.0):
         '''
-        Initialize a ClientSelection object that can handle both FedAvg and FedCCE. It manages all
-        the client selection pipeline. The gamma parameter will be the complement to 1 of alpha and
-        beta.
+        Initialize a ClientSelection object that return probability of selecting clients.
+        The gamma parameter will be the complement to 1 of alpha and beta.
 
         Parameters
         ---
@@ -182,9 +181,6 @@ class ClientSelector():
         
         if weight == 'entropy':
 
-            # Compute the total entropy.
-            #tot_entropy = self._compute_tot(client_entropy, weight)
-
             entropies = [client_entropy[client]['entropy'] for client in client_entropy.keys()]
 
             mean_entropies = np.mean(entropies)
@@ -204,14 +200,6 @@ class ClientSelector():
         
         elif weight == 'loss':
             print('\nIn Rel\n')
-            #tot_loss = self._compute_tot(client_entropy, 'rel')
-            
-            #client_rel_loss = {}
-            #for client in client_entropy.keys():
-            #    client_rel_loss[client] = client_entropy[client]['loss'] / tot_loss
-            
-            #mean_rel_losses = 1/len(client_rel_loss.keys())
-            #std_rel_losses = np.std(list(client_rel_loss.values()))
             
             losses = [client_entropy[client]['loss'] for client in client_entropy.keys()]
 
@@ -250,7 +238,7 @@ class ClientSelector():
         
         Output
         ---
-        A `dict` containing, for each client, the probability to be picked in the next round.
+        A `list` containing, for each client, the probability to be picked in the next round.
         '''
 
         # Get all the weights for each client.
@@ -262,18 +250,11 @@ class ClientSelector():
 
 
         for client in client_entropy.keys():
-
-            # Compute the probabilities.
-            #client_probs[client] += (self.alpha * client_img_weight_dict[client] + \
-            #                        self.beta  * client_entropy_weight_dict[client] + \
-            #                        self.gamma * client_loss_weight_dict[client]) / (1/len(client_entropy.keys())) * (1 / len(self.train_clients))
             
             client_probs[client] += (self.alpha * client_img_weight_dict[client] + \
                                     self.beta  * client_entropy_weight_dict[client] + \
                                     self.gamma * client_loss_weight_dict[client]) * len(client_entropy.keys()) / len(self.train_clients)
-            
-            #client_probs[clients] 
-            
+                        
         print("\nclient_probs", client_probs)
         dict_p = {client.name: 1/len(self.train_clients) for client in self.train_clients}
 

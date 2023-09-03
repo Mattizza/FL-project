@@ -10,12 +10,12 @@ class StyleExtractor:
     def __init__(self, dataset):
         self.dataset = dataset
         self.avg_style = None #avg style
-        self.n_images_per_style  = len(self.dataset) #num. di immagini usate per calcolare lo stile medio
+        self.n_images_per_style  = len(self.dataset) #num. of images used to compute the average style
         
-        self.L = None #grandezza percentuale di metà del lato della finestra (0-1). Quella che nel paper viene chiamata Beta
+        self.L = None #percentage measure of half of the side of the window (0-1). (Beta)
         self.size = (1024, 512) #size (W,H) to which resize images before style transfer
-        self.sizes = None #Coordinate della finestra
-        self.b = None #num di pxls = metà del lato della finestra
+        self.sizes = None #window coordinates
+        self.b = None #num of pxls = half of window'side
                     #b == 0 --> 1x1, b == 1 --> 3x3, b == 2 --> 5x5, ...
 
     def preprocess(self, x):
@@ -41,13 +41,13 @@ class StyleExtractor:
         
         styles = [] #collect the style of each image
 
-        #Questo ciclo estrae lo stile da un numero = self.n_images_per_style immagini
+        #This cycle extracts the style from a number = self.n_images_per_style images
         for sample, _ in tqdm(self.dataset, total=self.n_images_per_style):
             
             image = self.preprocess(sample)
             styles.append(self._extract_style(image))
 
-        #Qui viene calcolato lo stile medio
+        #Here the average style is computed
         if self.n_images_per_style > 1:
             styles = np.stack(styles, axis=0)
             style = np.mean(styles, axis=0)
@@ -58,7 +58,7 @@ class StyleExtractor:
 
         return self.avg_style, self.sizes
 
-    # Data una singola immagine ne estrae lo stile
+    #Given an image, extract its style
     def _extract_style(self, img_np):
         fft_np = np.fft.fft2(img_np, axes=(-2, -1))
         amp = np.abs(fft_np)
@@ -69,7 +69,7 @@ class StyleExtractor:
         style = amp_shift[:, h1:h2, w1:w2]
         return style
     
-    #Restituisce gli indici riga e colonna della finestra a cui applicare FDA
+    #Return the row and column indices of the window to which apply FDA
     def compute_size(self, amp_shift):
         _, h, w = amp_shift.shape
         b = (np.floor(np.amin((h, w)) * self.L)).astype(int) if self.b is None else self.b

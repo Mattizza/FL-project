@@ -8,9 +8,9 @@ from tqdm import tqdm
 class StyleApplier:
 
     def __init__(self, L=0.1, size=(1024, 512)):
-        self.styles_bank = [] #banca degli stili
-        self.styles_names = [] #nome di ogni stile
-        self.L = L #grandezza percentuale di metà del lato della finestra (0-1). Quella che nel paper viene chiamata Beta
+        self.styles_bank = [] #bank of styles
+        self.styles_names = [] #name of each style
+        self.L = L #percentage measure of half of the side of the window (0-1). (Beta)
         self.size = size #size (W,H) to which resize images before style transfer
         self.sizes = None
         self.cv2 = False

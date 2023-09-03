@@ -23,21 +23,12 @@ class MeanReduction:
     def __call__(self, x, target):
         x = x[target != 255]
         return x.mean()
+    
 
-#TODO: eliminare se il programma funziona senza
-#unNormalize non modifica il tensore originale, restituisce una copia unNormalized
-"""def unNormalize(tensorImage, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]):
-        copytensorImage = copy.deepcopy(tensorImage)
-        for t, m, s in zip(copytensorImage, mean, std):
-            t.mul_(s).add_(m)
-        return copytensorImage"""
-
-#Non modifica il tensore originale
 def denormalize(tensorImage, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]):
     _mean = -np.array(mean) / std
     _std = 1 / np.array(std)
     return normalize(tensorImage, _mean, _std)
-
 
 
 class SelfTrainingLoss(nn.Module):

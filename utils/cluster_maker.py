@@ -1,11 +1,3 @@
-#Questa classe deve essere in grado di restituire un dizionario con key il nome del client e value i cluster associato
-#Deve essere in grado di creare i cluster con varie tecniche
-#Deve essere in grado di applicare la pca prima di fare la clusterizzazione
-#Deve essere in grado, dato uno stile, di restituire a quale cluster appartiene
-#Deve settare un parametro cluster id nel client
-#Deve essere in grado di calcolare l'accuratezza del cluster sulla base di città o meteo??????
-#Eventualmente deve essere in grado di fare una grid search sulle varie componenti della pca per decidere quale clustering è migliore
-
 import numpy as np
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score

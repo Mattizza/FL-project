@@ -93,16 +93,3 @@ class GTA5(VisionDataset):
     
     def set_style_tf_fn(self, style_tf_fn):
         self.style_tf_fn = style_tf_fn
-    
-    #def add_fda(self):
-    #    #TODO: aggiungi davanti a tutte  le transforms il cambio di stile
-    #    self.transform.insert(0, fda)
-
-
-
-
-
-
-
-
-    

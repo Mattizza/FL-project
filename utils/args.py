@@ -8,9 +8,12 @@ def get_parser():
     parser.add_argument('--niid', action='store_true', default=False,
                         help='Run the experiment with the non-IID partition (IID by default). Only on FEMNIST dataset.')
     parser.add_argument('--model', type=str, choices=['deeplabv3_mobilenetv2', 'resnet18', 'cnn'], default = 'deeplabv3_mobilenetv2' ,help='model name')
+    
+    #Federate Framework
     parser.add_argument('--num_rounds', type=int, default = 1, help='number of rounds')
     parser.add_argument('--num_epochs', type=int, required = True, help='number of local epochs')
     parser.add_argument('--clients_per_round', type=int, default=1, help='number of clients trained per round')
+    
     parser.add_argument('--hnm', action='store_true', default=False, help='Use hard negative mining reduction or not')
     parser.add_argument('--lr', type=float, default=0.05, help='learning rate')
     parser.add_argument('--bs', type=int, default=4, help='batch size')
@@ -24,7 +27,7 @@ def get_parser():
     parser.add_argument('--framework', type=str, choices = ['centralized', 'federated'], required=True, help = 'Choose a centralized or a federated framework')
     parser.add_argument('--config', type=str, default='bestHypSameDom.yaml', help = 'name of the file containing the configuration, stored in the configs folder (include extention .yaml)')
     parser.add_argument('--transformConfig', type=str, default=None, help = 'name of the file containing the transforms instructions, stored in the transformsConfigs folder (include extention .yaml)')
-    parser.add_argument('--mode', type=str, default='train', help = 'Mode can be train or test')
+    #parser.add_argument('--mode', type=str, default='train', help = 'Mode can be train or test')
     
     #Task 2
     parser.add_argument('--r', type=int, default=None, help='num. of round beween each evaluation in federated framework.')
@@ -52,10 +55,7 @@ def get_parser():
     parser.add_argument('--custom_weight_agg', type=str, default=None, help = 'Set true to use custom weight aggregation.')
     parser.add_argument('--llambda_weight_agg', type=float, default=1.0, help = 'Lambda parameter in the sigmoid function for the weight aggregation.')
     parser.add_argument('--beta_weight_agg', type=float, default=0.5, help = 'Weight related to the entropy of the clusters. It must be comprised in [0, 1]')
-    #parser.add_argument('--use_clustered_weight_agg', type=str, default=None, help = 'set true if you want to use clustering in the weight aggregation.')
     parser.add_argument('--alpha_weight_agg', type=float, default=0.0, help = 'Total number of clusters.')
-
-
 
     #wandb args
     parser.add_argument('--wandb', type = str, choices=[None, 'singleRun', 'hypTuning', 'transformTuning'], default= None, help='None: deactivate wandb, singleRun: track a single run with fixed parameters, hypTuning: do hyperparam tuning')

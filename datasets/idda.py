@@ -104,7 +104,6 @@ class IDDADataset(VisionDataset):
         
         #Da rimuovere if sotto (solo per debugging)
         if  self.pseudoLBeforeTransforms:    
-            #! Affinchè sia true controlla che non ci siano delle transforms strane
             print("\nSecondo check:")
             print((label == pseudo_lab.cpu()).unique())
 
@@ -132,32 +131,6 @@ class IDDADataset(VisionDataset):
         self.teacherModel = teacherModel
         self.pseudoLBeforeTransforms = True
     
-    """def get_image_mask(self, prob, pseudo_lab, conf_th = 0.9, fraction = 0.66):
-        print("\n\nProb", prob.shape)
-        max_prob = prob.detach().clone().max(0)[0]
-        #max_prob trova la probabilità massima per ogni pxl
-        print("\n\nmax prob", max_prob.shape)
-
-        #la mask restituisce True se la max_prob > soglia 
-        mask_prob = max_prob > conf_th if 0. < conf_th < 1. else torch.zeros(max_prob.size(),
-                                                                                       dtype=torch.bool).to(
-            max_prob.device)
-        #crea una mask con solo zero, della stessa dimensione della mask_prob
-        mask_topk = torch.zeros(max_prob.size(), dtype=torch.bool).to(max_prob.device)
-
-        if 0. < fraction < 1.:
-            for c in pseudo_lab.unique():
-                mask_c = pseudo_lab == c #mask con True dove la label è c
-                max_prob_c = max_prob.clone()
-                max_prob_c[~mask_c] = 0 #crea una mask di probabilità che vale 0 dove non c'è la label c
-                _, idx_c = torch.topk(max_prob_c.flatten(), k=int(mask_c.sum() * fraction)) 
-                mask_topk_c = torch.zeros_like(max_prob_c.flatten(), dtype=torch.bool)
-                mask_topk_c[idx_c] = 1
-                mask_c &= mask_topk_c.unflatten(dim=0, sizes=max_prob_c.size())
-                mask_topk |= mask_c
-        return mask_prob | mask_topk"""
-    
-    #TODO: vedi se funziona tutto se questa funzione la togli e chiami da utils
     def get_image_mask(self, prob, pseudo_lab, conf_th = 0.9, fraction = 0.66):
         max_prob = prob.detach().clone().max(0)[0] #trova la probabilità massima per ogni pxl
         #la mask restituisce True se la max_prob > soglia 

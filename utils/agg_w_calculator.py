@@ -7,18 +7,20 @@ class AggWeightCalculator():
  
         self.args = args
         self.tot_num_cluster = None
-        self.alpha = self.args.alpha_weight_agg     #peso num_samples
-        self.beta = self.args.beta_weight_agg       #peso entropy
-        self.gamma = 1 - self.alpha - self.beta     # Complement to 1. Peso loss 
-        self.llambda = self.args.llambda_weight_agg
+        self.alpha = self.args.alpha_weight_agg     #num_samples weight
+        self.beta = self.args.beta_weight_agg       #entropy weight
+        self.gamma = 1 - self.alpha - self.beta     #Complement to 1. loss weight
+        self.llambda = self.args.llambda_weight_agg #lambda parameter in the sigmoid function (adjust the slope of the sigmoid)
     
     def set_tot_num_cluster(self, tot_num_cluster):
         self.tot_num_cluster = tot_num_cluster
 
     def get_weight(self, selected_clients, metric = 'loss'):
-        #ogni client ha come attributo cluster_id, entropy_last_epoch e loss_last_epoch
-        #losses = [] 
-        #entropies = [] #[entropy1, entropy2, entropy3, entropy4, entropy5]
+        """
+        get the weight for each client based on the metric (could be loss or entropy)
+        """
+        
+        #Each client has as attribute cluster_id, entropy_last_epoch and loss_last_epoch
         
         if self.tot_num_cluster == None:
             raise Exception('tot_num_cluster must be set before calling get_weight')
@@ -29,16 +31,16 @@ class AggWeightCalculator():
 
         metrics_by_cluster = [[] for _ in range(self.tot_num_cluster)] # will be [[loss1, loss3], [loss2, loss5], [], [], [loss4]}, the index is the cluster id
 
-        for client in selected_clients: # itera su tutti i client selezionati (oggetti client)
+        for client in selected_clients: # iterate on all the selected clients (Client object)
             
-            clusters_of_selected_clients.append(client.cluster_id) #salva l'id del cluster del client
+            clusters_of_selected_clients.append(client.cluster_id) #save the client's cluster id
             
             if metric == 'loss':
                 #debugging
                 print(f'loss {client.name}: {client.get_entropy_dict()}')
-                metrics.append(client.get_entropy_dict()['loss']) #salva la loss dell'ultimo epoch del client
+                metrics.append(client.get_entropy_dict()['loss']) #save the client's loss of the last epoch
             elif metric == 'entropy':
-                metrics.append(client.get_entropy_dict()['entropy']) #salva l'entropy dell'ultimo epoch del client
+                metrics.append(client.get_entropy_dict()['entropy']) #save the client's entropy of the last epoch
         
         unique_clusters = set(clusters_of_selected_clients)
         if len(unique_clusters) == 1: #If there is a single cluster, all the clients have the same weight
@@ -55,7 +57,7 @@ class AggWeightCalculator():
             num_clients_in_cluster[cluster_id] += 1
             metrics_by_cluster[cluster_id].append(metrics[client_ix])
         
-        #Calcola la media delle loss per ogni cluster
+        #Calculate the mean of the losses for each cluster
         cluster_metrics = []
         for cluster_id in range(self.tot_num_cluster):
             if len(metrics_by_cluster[cluster_id]) != 0:
@@ -63,9 +65,7 @@ class AggWeightCalculator():
             else:
                 cluster_metrics.append(np.nan)
         
-        #Calcola la media delle medie dei cluster pesata in base al numero di client
-        #mean_cluster_metric_pesata_num_client = np.nansum([cluster_metrics[cluster_id]*num_clients_in_cluster[cluster_id] for cluster_id in range(self.tot_num_cluster)])/len(metrics)
-        #calcola la media delle medie dei cluster non pesata
+        #Calcola the mean of the clusters'mean
         mean_cluster_metric = np.nanmean(cluster_metrics)
 
         std_cluster_metric = np.nanstd(cluster_metrics)
@@ -80,12 +80,17 @@ class AggWeightCalculator():
         return clients_w
     
     def get_weight_num_samples(self, selected_clients):
+        """
+        get the weight for each client based on the number of samples
+        """
         num_samples_per_client = np.array([client.num_train_samples for client in selected_clients])
         tot_num_samples = np.sum(num_samples_per_client)
         return num_samples_per_client/tot_num_samples
         
-    
     def get_final_w(self, selected_clients):
+        """
+        get the final weight for each client
+        """
         clients_w_loss = 0
         clients_w_entropy = 0
         clients_w_num_samples = 0

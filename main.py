@@ -12,11 +12,11 @@ import datasets.ss_transforms as sstr
 
 from torch import nn
 from client import Client
-from server import Server
+from servers.server import Server
 from utils.args import get_parser
 from datasets.idda import IDDADataset
 from datasets.gta5 import GTA5
-from serverGTA import ServerGTA
+from servers.serverGTA import ServerGTA
 from models.deeplabv3 import deeplabv3_mobilenetv2
 from utils.stream_metrics import StreamSegMetrics, StreamClsMetrics
 
@@ -108,15 +108,6 @@ def get_transforms(args):
                 sstr.ToTensor(),
                 sstr.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
             ])
-        #elif args.model == 'cnn' or args.model == 'resnet18':
-        #    train_transforms = nptr.Compose([
-        #        nptr.ToTensor(),
-        #        nptr.Normalize((0.5,), (0.5,)),
-        #    ])
-        #    test_transforms = nptr.Compose([
-        #        nptr.ToTensor(),
-        #        nptr.Normalize((0.5,), (0.5,)),
-        #    ])
         else:
             raise NotImplementedError
 
@@ -124,25 +115,10 @@ def get_transforms(args):
     #print("\nTest transfroms:", test_transforms)
     return train_transforms, test_transforms
 
-#Da eliminare, non usata per il nostro progetto
-"""def read_femnist_dir(data_dir):
-    data = defaultdict(lambda: {})
-    files = os.listdir(data_dir)
-    files = [f for f in files if f.endswith('.json')]
-    for f in files:
-        file_path = os.path.join(data_dir, f)
-        with open(file_path, 'r') as inf:
-            cdata = json.load(inf)
-        data.update(cdata['user_data'])
-    return data"""
-
-#da eliminare, non usata per il nostro progetto
-"""def read_femnist_data(train_data_dir, test_data_dir):
-    return read_femnist_dir(train_data_dir), read_femnist_dir(test_data_dir)"""
-
-
 def get_datasets(args, train_transforms = None, test_transforms = None):
-
+    """
+    Function to create all the needed dataset when using idda in a centralized or federated framework
+    """
     train_datasets = []
     test_train_datasets = []
 
@@ -243,6 +219,9 @@ def get_datasets_DA(args, train_transforms = None, test_transforms = None):
 
 
 def set_metrics(args):
+    """
+    Function to create the metrics used to evaluate the model both when using idda and gta5
+    """
     num_classes = get_dataset_num_classes(args.dataset)
     if args.model == 'deeplabv3_mobilenetv2' and args.dataset == 'idda':
         metrics = {
@@ -269,6 +248,9 @@ def set_metrics(args):
 
 
 def gen_clients(args, train_datasets, test_train_datasets, test_datasets, model):
+    """
+    Function to create the clients, when using idda in a centralized or federated framework
+    """
     clients = [[], []]
 
     for train_dataset, test_train_dataset in zip(train_datasets, test_train_datasets):
@@ -277,17 +259,13 @@ def gen_clients(args, train_datasets, test_train_datasets, test_datasets, model)
     for test_dataset in test_datasets:
         clients[1].append(Client(args, train_dataset=None, test_dataset = test_dataset, model = model, test_client=True))
 
-    """
-    clients = [[], []]
-    for i, datasets in enumerate([train_datasets, test_datasets]):
-        for ds in datasets:
-            clients[i].append(Client(args, ds, model, test_client=i == 1))
-    """
-
     return clients[0], clients[1]
 
 
 def gen_clients_dom_adapt(args, idda_clients_datasets, test_datasets, model):
+    """
+    Function to create the clients, when using gta5 in a DA framework
+    """
     clients = [[],[]] # ix=0 clients with idda partition, ix=1 clients with eval and tests partition (idda)
     
     #Creates the various clients, each one having a partition of the idda dataset
@@ -301,6 +279,9 @@ def gen_clients_dom_adapt(args, idda_clients_datasets, test_datasets, model):
     return clients
 
 def get_sweep_transforms(args, config):
+    """
+    Function to generate the transforms to use in the wandb sweep
+    """
     if args.model == 'deeplabv3_mobilenetv2':
         rnd_transforms = []
         configColorJitter = config.get('colorJitter')
@@ -346,6 +327,9 @@ def yaml_to_dict(path):
             print(exc)
 
 def sweeping(args):
+    """
+    Function to perform the wandb sweep both for hyperparameters tuning and transforms tuning
+    """
     wandb.login()
 
     if args.wandb ==  'hypTuning':
@@ -372,6 +356,9 @@ def sweeping(args):
 
 
 def sweep_train(args, config = None):
+    """
+    Train function to use in the wandb sweep
+    """
     
     with wandb.init(config = config):
         config = wandb.config
@@ -403,6 +390,9 @@ def sweep_train(args, config = None):
         server.test()
 
 def sweep_train_DA(args, config = None):
+    """
+    Train function to use in the wandb sweep for domain adaptation task
+    """
     
     with wandb.init(config = config):
         config = wandb.config
@@ -471,7 +461,6 @@ def main():
             idda_clients, test_clients = gen_clients_dom_adapt(args, idda_clients_datasets, test_datasets, model)
             server = ServerGTA(args, source_dataset=train_dataset, source_dataset_test=test_dataset_gta, target_clients=idda_clients, test_clients=test_clients, model=model, metrics=metrics)
             
-            #Metodo che sfrutta uno style_extractor e uno style_applier
             if args.fda.lower() == 'true': #if FDA is active
                 print('Extracting stlyes from clients...')
                 server.load_styles() #extract_styles from clients

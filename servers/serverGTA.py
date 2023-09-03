@@ -9,14 +9,13 @@ from torch import optim, nn
 from utils.utils import HardNegativeMining, MeanReduction
 from inspect import signature
 from torch.optim import lr_scheduler
-from style_transfer import StyleAugment
 import os
 from tqdm import tqdm
 
 from PIL import Image, ImageDraw
 import random
 
-from style_applier import StyleApplier
+from utils.style_applier import StyleApplier
 
 
 class ServerGTA:
@@ -26,12 +25,12 @@ class ServerGTA:
 
         self.source_dataset = source_dataset #train on this gta dataset
         self.source_dataset_test = source_dataset_test #test on this gta dataset
-        self.target_clients = target_clients #lista dei target_clients ovvero i clienti che hanno una partizione di idda
-        self.test_clients = test_clients #lista con tre elementi (idda_test, idda_same_dom, idda_diff_dom)
+        self.target_clients = target_clients #list of target_clients (those who have a idda patition)
+        self.test_clients = test_clients #list [idda_test, idda_same_dom, idda_diff_dom]
         self.test_client_gta = Client(self.args, train_dataset=None, test_dataset=self.source_dataset_test, model=self.model, test_client=True)
 
         self.metrics = metrics
-        self.model_params_dict = copy.deepcopy(self.model.state_dict()) #da eliminare
+        self.model_params_dict = copy.deepcopy(self.model.state_dict()) 
         
         self.train_loader = DataLoader(self.source_dataset, batch_size=self.args.bs, shuffle=True, drop_last=True)
         self.test_loader_gta = DataLoader(self.source_dataset_test, batch_size=1, shuffle=False)
@@ -50,7 +49,6 @@ class ServerGTA:
 
         #Task 3.4
         self.b = self.args.b #size of the window to apply FDA
-        #self.styleaug = StyleAugment(n_images_per_style = 25, b = self.b )
         self.style_applier = StyleApplier()
         
     def _get_outputs(self, images):
@@ -101,8 +99,7 @@ class ServerGTA:
         """
             Simply call the method to create the optimizer and the scheduler
         """
-        #il file config che riceve deve essere un dizionario con chiavi esterne "optimizer" e "scheduler"
-        #se usi config = wand.config viene automaticamente fatto in questo modo
+        #The config file must be a dict with external keys "optimizer" and "scheduler"
 
         self.set_optimizer(config)
         self.set_scheduler(config)    
@@ -136,7 +133,7 @@ class ServerGTA:
             # each mini-batch.
             #wandb.log({"loss": loss.mean()})
             
-            # We are considering 10 batch at a time. TO DO: define a way to handle different values.
+            # We are considering 10 batch at a time.
             # We are considering n_steps batch at a time.
             self.n_total_steps = len(self.train_loader)
             if (cur_step + 1) % n_steps == 0 or cur_step + 1 == self.n_total_steps:
@@ -238,18 +235,17 @@ class ServerGTA:
                     "metrics": self.metrics, #these are the updated metrics
                     "train_dataset": type(self.source_dataset).__name__}
         
-        checkpoint['scheduler_state'] = self.scheduler.state_dict() if self.scheduler != None else None     #manage the case when the scheduler is none
+        checkpoint['scheduler_state'] = self.scheduler.state_dict() if self.scheduler != None else None  #manage the case when the scheduler is none
 
         if self.args.fda == 'true':
              checkpoint["styles_mapping"] = self.get_styles_mapping()
-             checkpoint["winSize"] = self.get_window_sizes() #TODO controlla se servono davvero
+             checkpoint["winSize"] = self.get_window_sizes()
 
         root1 = 'checkpoints'
         root2 = 'gta'
         customPath = self.args.name_checkpoint_to_save
         path = os.path.join(root1, root2, customPath)
         torch.save(checkpoint, path)
-        #print(f"=> Saving checkpoint at {path}.\n- Target_eval_miou: {eval_miou:.2%}\n- Test_same_dom: {self.mious['test_same_dom'][-1]:.2%}\n- Test_diff_dom: {self.mious['test_diff_dom'][-1]:.2%}\n")
         print(f"=> Saving checkpoint at {path}.\n"
             f"- Target_eval_miou: {eval_miou:.2%}\n"
             f"- Test_same_dom: {self.mious['test_same_dom'][-1]:.2%}\n"
@@ -262,8 +258,6 @@ class ServerGTA:
         root2 = 'gta'
         path = os.path.join(root1, root2, self.args.checkpoint_to_load)
         checkpoint = torch.load(path)
-        #TODO: check the print
-        #print(f"\n=> Loading the model trained on {checkpoint['train_dataset']}:\n - epochs executed: {checkpoint['actual_epochs_executed']}\n - Target_eval_miou on {checkpoint['eval_dataset']}: {checkpoint['target_eval_miou']:.2%}\n - Test_same_dom: {checkpoint['mious']['test_same_dom'][-1]:.2%}\n - Test_diff_dom: {checkpoint['mious']['test_diff_dom'][-1]:.2%}\n")
         print(f"\n=> Loading the model trained on {checkpoint['train_dataset']}:\n"
             f" - epochs executed: {checkpoint['actual_epochs_executed']}\n"
             f" - Target_eval_miou on {checkpoint['eval_dataset']}: {checkpoint['target_eval_miou']:.2%}\n"
@@ -279,7 +273,6 @@ class ServerGTA:
         self.max_eval_miou = checkpoint['target_eval_miou']
         self.pretrain_actual_epochs = checkpoint['actual_epochs_executed']
         self.mious = checkpoint['mious']
-        #self.metrics = checkpoint['metrics'] #per ora non viene usata da nessuna parte dopo che viene caricata
 
     def eval_train(self):
         """
@@ -346,18 +339,9 @@ class ServerGTA:
 
     def load_server_model_on_client(self, client):
         client.model = self.model #<- con questa passi proprio il modello
-        #client.model.load_state_dict(copy.deepcopy(self.model.state_dict())) #<- con questa passi i parametri del modello
-
-    """def extract_styles(self): #Metodo alernativo non più usato
-        #extract just two styles for debbugging purposes
-        target_client = self.target_clients[3]
-        self.styleaug.add_style(target_client.test_dataset, name=target_client.name)
-        
-        #for target_client in self.target_clients:
-        #    self.styleaug.add_style(target_client.test_dataset, name=target_client.name)"""
     
-    def apply_styles(self):
-        self.source_dataset.set_style_tf_fn(self.styleaug.apply_style)
+    """def apply_styles(self):
+        self.source_dataset.set_style_tf_fn(self.styleaug.apply_style)"""
 
     def compare_wo_w_style(self, ix = None):
         #ix = 288
@@ -396,16 +380,12 @@ class ServerGTA:
 
         return result #result is a pil image
     
-    def delete_styles(self):
-        self.styleaug.delete_styles()
+    """def delete_styles(self):
+        self.styleaug.delete_styles()"""
 
-    def list_styles(self):
+    """def list_styles(self):
         print("These are the styles available:")
-        print(self.styleaug.styles_names)
-
-
-###################
-#Altro metodo per trasferire gli stili
+        print(self.styleaug.styles_names)"""
 
     def load_styles(self):
         #server make the clients extract the avg_style and pass them to him

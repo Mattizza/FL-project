@@ -16,7 +16,7 @@ from utils.args import get_parser
 from datasets.idda import IDDADataset
 from models.deeplabv3 import deeplabv3_mobilenetv2
 from utils.stream_metrics import StreamSegMetrics, StreamClsMetrics
-from customWAggServer import CustomWaggServer
+from servers.customWAggServer import CustomWaggServer
 
 import sys
 import yaml
@@ -106,20 +106,9 @@ def get_transforms(args):
                 sstr.ToTensor(),
                 sstr.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
             ])
-        #elif args.model == 'cnn' or args.model == 'resnet18':
-        #    train_transforms = nptr.Compose([
-        #        nptr.ToTensor(),
-        #        nptr.Normalize((0.5,), (0.5,)),
-        #    ])
-        #    test_transforms = nptr.Compose([
-        #        nptr.ToTensor(),
-        #        nptr.Normalize((0.5,), (0.5,)),
-        #    ])
         else:
             raise NotImplementedError
 
-    #print("Train transforms:", train_transforms)
-    #print("\nTest transfroms:", test_transforms)
     return train_transforms, test_transforms
 
 
@@ -168,55 +157,6 @@ def get_datasets(args, train_transforms = None, test_transforms = None):
 
     #[train_dataset], [test_train_dataset], [for_style_extraction_dataset],[test_same_dom_data, test_diff__dom]
 
-
-def get_datasets_DA(args, train_transforms = None, test_transforms = None):
-    """
-    Function to create all the needed dataset when using gta5 in a DA framework
-    """
-
-    #Note: when in gta/DA framework we should apply the train_transforms to source_dataset (gta5), and test_transforms to target_datasets (idda)
-    if train_transforms == None or test_transforms == None:
-        train_transforms, test_transforms = get_transforms(args)
-    
-    print("Train transforms:", train_transforms)
-    print("\nTest transfroms:", test_transforms)
-
-    
-    idda_root = 'data/idda'
-
-    #Create the idda_clients_datasets, these dataset are used just to extract the style of the client
-    idda_clients_datasets = []
-    with open(os.path.join(idda_root, 'train.json'), 'r') as f:
-            all_data = json.load(f)
-    for client_id in all_data.keys():
-        idda_clients_datasets.append(IDDADataset(root=idda_root, list_samples=all_data[client_id], transform=None,
-                                        client_name=client_id))
-
-    #Create idda_eval dataset
-    with open(os.path.join(idda_root, 'train.txt'), 'r') as f:
-        idda_train_data = f.read().splitlines()
-        idda_train = IDDADataset(root=idda_root, list_samples=idda_train_data, transform=test_transforms,
-                                            client_name="idda_test")
-    
-    #Create idda_same_dom dataset
-    with open(os.path.join(idda_root, 'test_same_dom.txt'), 'r') as f:
-        test_same_dom_data = f.read().splitlines()
-        test_same_dom_dataset = IDDADataset(root=idda_root, list_samples=test_same_dom_data, transform=test_transforms,
-                                            client_name='test_same_dom')
-    
-    #Create idda_diff_dom dataset
-    with open(os.path.join(idda_root, 'test_diff_dom.txt'), 'r') as f:
-        test_diff_dom_data = f.read().splitlines()
-        test_diff_dom_dataset = IDDADataset(root=idda_root, list_samples=test_diff_dom_data, transform=test_transforms,
-                                            client_name='test_diff_dom')
-        
-    eval_and_test_datasets = [idda_train, test_same_dom_dataset, test_diff_dom_dataset]
-
-    test_dataset_gta = GTA5(test_transform = test_transforms, client_name = 'test_gta5', target_dataset='idda', test=True)
-
-    return train_dataset, test_dataset_gta ,idda_clients_datasets, eval_and_test_datasets
-
-
 def set_metrics(args):
     num_classes = get_dataset_num_classes(args.dataset)
     if args.model == 'deeplabv3_mobilenetv2' and args.dataset == 'idda':
@@ -258,21 +198,6 @@ def gen_clients(args, train_datasets, test_train_datasets, test_datasets, for_st
     return clients[0], clients[1], clients[2]
 
 
-def gen_clients_dom_adapt(args, idda_clients_datasets, test_datasets, model):
-    clients = [[],[]] # ix=0 clients with idda partition, ix=1 clients with eval and tests partition (idda)
-    
-    #Creates the various clients, each one having a partition of the idda dataset
-    for idda_client_dataset in idda_clients_datasets:
-        clients[0].append(Client(args, train_dataset=None, test_dataset = idda_client_dataset, model = model, test_client=True, isTarget=True))
-
-    #Creates 3 test clients: idda_test(file train.txt), idda_same_dom, idda_diff_dom
-    for test_dataset in test_datasets:
-        clients[1].append(Client(args, train_dataset=None, test_dataset = test_dataset, model = model, test_client=True))
-
-    return clients
-
-
-
 def main():
     parser = get_parser()
     args = parser.parse_args()
@@ -302,10 +227,6 @@ def main():
     train_clients, test_clients, clients_for_style_extraction = gen_clients(args, train_datasets, test_train_datasets, test_datasets, for_style_extraction_dataset, model)
     
     server = CustomWaggServer(args, train_clients, test_clients, clients_for_style_extraction, model, metrics, config)
-    
-    #debugging
-    #print('num_immagini',  train_clients[0].num_train_samples)
-    ###
     
     #compute syles
     print('Extracting stlyes from clients...')
