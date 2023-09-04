@@ -1,7 +1,7 @@
 # Towards Real World Federated Learning
 ### Machine Learning and Deep Learning 2023
 #### Politecnico di Torino
-Code for the Federated Learning project.
+Code for the Federated Learning project. Checkpoints of the performed experiments can be found at this [link](https://drive.google.com/drive/folders/1ZAe2BeIY9TzB0Y22fVszJbyksgl-RDLE?usp=sharing).
 
 ## Setup
 #### Environment
@@ -13,9 +13,6 @@ The repository supports experiments on the following datasets:
    - Task: semantic segmentation for autonomous driving
    - 24 users
 2. Reduced **GTA 5** datasets [2]
-
-#### Checkpoints
-Checkpoints of the performed experiments can be found at this [link](https://drive.google.com/drive/folders/1ZAe2BeIY9TzB0Y22fVszJbyksgl-RDLE?usp=sharing).
 
 ## How to run
 The ```main.py``` orchestrates training. All arguments need to be specified through the ```args``` parameter (options can be found in ```utils/args.py```).
