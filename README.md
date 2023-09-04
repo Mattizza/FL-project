@@ -23,4 +23,5 @@ CoLab notebook examples can be found in the homonymous folder.
 
 ## References
 [1] Fantauzzo, Lidia, et al. "FedDrive: generalizing federated learning to semantic segmentation in autonomous driving." 2022 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS). IEEE, 2022.
+
 [2] Richter, S.R., Vineet, V., Roth, S., Koltun, V. (2016). Playing for Data: Ground Truth from Computer Games. In: Leibe, B., Matas, J., Sebe, N., Welling, M. (eds) Computer Vision – ECCV 2016. ECCV 2016. Lecture Notes in Computer Science(), vol 9906. Springer, Cham. https://doi.org/10.1007/978-3-319-46475-6_7
