@@ -149,53 +149,6 @@ class Server:
 
         return updates, round_avg_loss #update is a list of model.state_dict(), each one of a different client
 
-    """def train_round_entropy(self):
-        num_samples_each_client = []
-        updates = []
-        avg_losses = []
-
-        clients_entropy = {}
-        client_num_samples = {}
-        client_model = {}
-        for i, client in enumerate(self.select_clients()):
-            print(client.name)
-            self.load_server_model_on_client(client)
-            
-            if self.args.self_train == 'true':
-                client.self_train_loss.set_teacher(self.teacher_model)#passa in teacher model alla loss del client
-            
-            elif self.args.our_self_train == 'true':
-                client.set_teacherModel(self.teacher_model)
-            
-            num_samples, update , avg_loss= client.train(self.config)
-
-            #!
-            #self.clusters = {'T_0_A' : 0, 'T_1_E': 2}
-            
-            clients_entropy[client.name] = {'loss': avg_loss,
-                                            'cluster': client.cluster_id,
-                                            'entropy': client.entropy_last_epoch
-                                            }
-            client_num_samples[client.name] = num_samples
-
-            client_model[client.name] = update
-
-            clusters = np.unique(list(self.clusters.keys()))
-
-
-            num_samples_each_client.append(num_samples)
-            avg_losses.append(avg_loss)
-
-        
-        self._newAggregate(clients_entropy, client_num_samples, clusters, self.args.sigma, client_model)
-        round_avg_loss = np.average(avg_losses, weights = num_samples_each_client)
-
-        #Wandb
-        if self.args.wandb != None and self.args.framework == 'federated':
-                wandb.log({"round loss": round_avg_loss})
-
-        return updates, round_avg_loss #update is a list of model.state_dict(), each one of a different client
-        """
     
     def _aggregate(self, updates):
         """
@@ -225,14 +178,6 @@ class Server:
             
             return averaged_sol_n #is a model_state_dict
         
-    
-    """def _newAggregate(self, clients_entropy, client_num_samples, clusters, sigma, client_model):
-
-        if self.args.framework == 'federated':
-            averaged_sol_n = self.aggregator.aggregate(clients_entropy, client_num_samples, clusters, sigma, client_model)
-
-        return averaged_sol_n #è un model_state_dict"""
-
 
     def update_model(self, updates):
         #calls aggregate() that returns a new_state_dict
