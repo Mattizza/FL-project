@@ -1,0 +1,27 @@
+method : random
+
+metric:
+  name: idda_train_miou
+  goal: maximize
+
+parameters:
+  optimizer:
+    parameters:
+
+      name: 
+        value: "RMSprop"
+
+      lr:
+        distribution: log_uniform_values
+        min: 1e-06
+        max: 1e-3
+      momentum:
+        values: [0, 0.7, 0.8, 0.9]
+  
+  scheduler:
+    parameters:
+      name:
+        values: [None, "ReduceLROnPlateau"]
+
+      patience: #ReduceLROnPlateau
+        value: 3

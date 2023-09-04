@@ -9,19 +9,19 @@ import numpy as np
 from torchvision.models import resnet18
 
 import datasets.ss_transforms as sstr
-import datasets.np_transforms as nptr
 
 from torch import nn
 from client import Client
-from datasets.femnist import Femnist
-from server import Server
+from servers.server import Server
 from utils.args import get_parser
 from datasets.idda import IDDADataset
+from datasets.gta5 import GTA5
+from servers.serverGTA import ServerGTA
 from models.deeplabv3 import deeplabv3_mobilenetv2
 from utils.stream_metrics import StreamSegMetrics, StreamClsMetrics
-from centralized import Centralized
-import yaml
 
+import sys
+import yaml
 import wandb
 
 
@@ -36,10 +36,12 @@ def set_seed(random_seed):
 
 
 def get_dataset_num_classes(dataset):
-    if dataset == 'idda' or dataset == 'iddaCB':
+    if dataset == 'idda':
         return 16
     if dataset == 'femnist':
         return 62
+    if dataset == 'gta5':
+        return 16
     raise NotImplementedError
 
 
@@ -52,76 +54,101 @@ def model_init(args):
         model.fc = nn.Linear(in_features=512, out_features=get_dataset_num_classes(args.dataset))
         return model
     if args.model == 'cnn':
-        # TODO: missing code here!
         raise NotImplementedError
     raise NotImplementedError
 
-
-def get_transforms(args):
-    # TODO: test your data augmentation by changing the transforms here!
-    if args.model == 'deeplabv3_mobilenetv2':
-        train_transforms = sstr.Compose([
+def getTrainTransformsFromYaml(transformConfig):
+    """
+        transformConfig: dict containing the configuration of the transforms.
+        Example: transformConfig = {'ColorJitter': {'brightness': 0.5, 'contrast': 0.2, 'saturation': 0.6, 'hue': 0.1}, 'RandomHorizontalFlip' : {'p' : 0.4}}
+    """
+    transfrom_functions = {
+        'ColorJitter': sstr.ColorJitter,
+        'RandomResizedCrop': sstr.RandomResizedCrop,
+        'RandomHorizontalFlip': sstr.RandomHorizontalFlip,
+        'RandomVerticalFlip': sstr.RandomVerticalFlip,
+        'RandomRotation': sstr.RandomRotation
+    }
+    customTransformsList = []
+    for k in transformConfig.keys():
+        transformClass = transfrom_functions[k]
+        params = transformConfig[k]
+        transform = transformClass(**params)
+        customTransformsList.append(transform)
+    
+    base_train_transforms = [
             sstr.RandomResizedCrop((512, 928), scale=(0.5, 2.0)),
             sstr.ToTensor(),
             sstr.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        ])
-        test_transforms = sstr.Compose([
-            sstr.ToTensor(),
-            sstr.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        ])
-    elif args.model == 'cnn' or args.model == 'resnet18':
-        train_transforms = nptr.Compose([
-            nptr.ToTensor(),
-            nptr.Normalize((0.5,), (0.5,)),
-        ])
-        test_transforms = nptr.Compose([
-            nptr.ToTensor(),
-            nptr.Normalize((0.5,), (0.5,)),
-        ])
+            ]
+    return sstr.Compose(customTransformsList + base_train_transforms)
+
+def get_transforms(args):
+    if args.transformConfig != None:
+        with open('transformConfigs/' + args.transformConfig, 'r') as f:
+            transformConfig = yaml.safe_load(f)
+            train_transforms = getTrainTransformsFromYaml(transformConfig)
+            test_transforms = sstr.Compose([
+                                            sstr.ToTensor(),
+                                            sstr.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+                                        ])
+    
     else:
-        raise NotImplementedError
+        if args.model == 'deeplabv3_mobilenetv2':
+            train_transforms = sstr.Compose([
+                sstr.ColorJitter(brightness=0.5,
+                                contrast=0.2,
+                                saturation=0.6,
+                                hue=0.1),
+                sstr.RandomResizedCrop((512, 928), scale=(0.5, 2.0)),
+                sstr.ToTensor(),
+                sstr.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+            ])
+            test_transforms = sstr.Compose([
+                sstr.ToTensor(),
+                sstr.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+            ])
+        else:
+            raise NotImplementedError
+
+    #print("Train transforms:", train_transforms)
+    #print("\nTest transfroms:", test_transforms)
     return train_transforms, test_transforms
 
-
-def read_femnist_dir(data_dir):
-    data = defaultdict(lambda: {})
-    files = os.listdir(data_dir)
-    files = [f for f in files if f.endswith('.json')]
-    for f in files:
-        file_path = os.path.join(data_dir, f)
-        with open(file_path, 'r') as inf:
-            cdata = json.load(inf)
-        data.update(cdata['user_data'])
-    return data
-
-
-def read_femnist_data(train_data_dir, test_data_dir):
-    return read_femnist_dir(train_data_dir), read_femnist_dir(test_data_dir)
-
-
 def get_datasets(args, train_transforms = None, test_transforms = None):
-
+    """
+    Function to create all the needed dataset when using idda in a centralized or federated framework
+    """
     train_datasets = []
+    test_train_datasets = []
 
     if train_transforms == None or test_transforms == None:
         train_transforms, test_transforms = get_transforms(args)
+    
+    print("Train transforms:", train_transforms)
+    print("\nTest transfroms:", test_transforms)
 
-    if args.dataset == 'idda' or args.dataset == 'iddaCB':
+    if args.dataset == 'idda':
         root = 'data/idda'
-        if args.dataset == 'idda':
+        if args.framework == 'federated':
             with open(os.path.join(root, 'train.json'), 'r') as f:
                 all_data = json.load(f)
             for client_id in all_data.keys():
                 train_datasets.append(IDDADataset(root=root, list_samples=all_data[client_id], transform=train_transforms,
                                                 client_name=client_id))
+                
+                test_train_datasets.append(IDDADataset(root=root, list_samples=all_data[client_id], transform = test_transforms,
+                                                client_name=client_id))
         
-        elif args.dataset == 'iddaCB':
+        elif args.framework == 'centralized':
             with open(os.path.join(root, 'train.txt'), 'r') as f:
                 train_data = f.read().splitlines()
                 train_datasets.append(IDDADataset(root=root, list_samples=train_data, transform=train_transforms,
-                                                    client_name="Unique"))
-            
-            
+                                                    client_name="iddaTrain"))
+                
+                test_train_datasets.append(IDDADataset(root=root, list_samples=train_data, transform=test_transforms,
+                                                    client_name="iddaTrain"))
+                       
         with open(os.path.join(root, 'test_same_dom.txt'), 'r') as f:
             test_same_dom_data = f.read().splitlines()
             test_same_dom_dataset = IDDADataset(root=root, list_samples=test_same_dom_data, transform=test_transforms,
@@ -133,36 +160,83 @@ def get_datasets(args, train_transforms = None, test_transforms = None):
                                                 client_name='test_diff_dom')
         test_datasets = [test_same_dom_dataset, test_diff_dom_dataset]
 
-
-    elif args.dataset == 'femnist':
-        niid = args.niid
-        train_data_dir = os.path.join('data', 'femnist', 'data', 'niid' if niid else 'iid', 'train')
-        test_data_dir = os.path.join('data', 'femnist', 'data', 'niid' if niid else 'iid', 'test')
-        train_data, test_data = read_femnist_data(train_data_dir, test_data_dir)
-
-        train_transforms, test_transforms = get_transforms(args)
-
-        train_datasets, test_datasets = [], []
-
-        for user, data in train_data.items():
-            train_datasets.append(Femnist(data, train_transforms, user))
-        for user, data in test_data.items():
-            test_datasets.append(Femnist(data, test_transforms, user))
-
     else:
         raise NotImplementedError
 
-    return train_datasets, test_datasets
+    return train_datasets, test_train_datasets, test_datasets
+
+    #[train_dataset], [test_train_dataset], [test_same_dom_data, test_diff__dom]
+
+
+def get_datasets_DA(args, train_transforms = None, test_transforms = None):
+    """
+    Function to create all the needed dataset when using gta5 in a DA framework
+    """
+
+    #Note: when in gta/DA framework we should apply the train_transforms to source_dataset (gta5), and test_transforms to target_datasets (idda)
+    if train_transforms == None or test_transforms == None:
+        train_transforms, test_transforms = get_transforms(args)
+    
+    print("Train transforms:", train_transforms)
+    print("\nTest transfroms:", test_transforms)
+
+    #Create GTA5 dataset
+    train_dataset = GTA5(transform=train_transforms, client_name = 'train_gta5', target_dataset='idda')
+    
+    idda_root = 'data/idda'
+
+    #Create the idda_clients_datasets, these dataset are used just to extract the style of the client
+    idda_clients_datasets = []
+    with open(os.path.join(idda_root, 'train.json'), 'r') as f:
+            all_data = json.load(f)
+    for client_id in all_data.keys():
+        idda_clients_datasets.append(IDDADataset(root=idda_root, list_samples=all_data[client_id], transform=None,
+                                        client_name=client_id))
+
+    #Create idda_eval dataset
+    with open(os.path.join(idda_root, 'train.txt'), 'r') as f:
+        idda_train_data = f.read().splitlines()
+        idda_train = IDDADataset(root=idda_root, list_samples=idda_train_data, transform=test_transforms,
+                                            client_name="idda_test")
+    
+    #Create idda_same_dom dataset
+    with open(os.path.join(idda_root, 'test_same_dom.txt'), 'r') as f:
+        test_same_dom_data = f.read().splitlines()
+        test_same_dom_dataset = IDDADataset(root=idda_root, list_samples=test_same_dom_data, transform=test_transforms,
+                                            client_name='test_same_dom')
+    
+    #Create idda_diff_dom dataset
+    with open(os.path.join(idda_root, 'test_diff_dom.txt'), 'r') as f:
+        test_diff_dom_data = f.read().splitlines()
+        test_diff_dom_dataset = IDDADataset(root=idda_root, list_samples=test_diff_dom_data, transform=test_transforms,
+                                            client_name='test_diff_dom')
+        
+    eval_and_test_datasets = [idda_train, test_same_dom_dataset, test_diff_dom_dataset]
+
+    test_dataset_gta = GTA5(test_transform = test_transforms, client_name = 'test_gta5', target_dataset='idda', test=True)
+
+    return train_dataset, test_dataset_gta ,idda_clients_datasets, eval_and_test_datasets
 
 
 def set_metrics(args):
+    """
+    Function to create the metrics used to evaluate the model both when using idda and gta5
+    """
     num_classes = get_dataset_num_classes(args.dataset)
-    if args.model == 'deeplabv3_mobilenetv2':
+    if args.model == 'deeplabv3_mobilenetv2' and args.dataset == 'idda':
         metrics = {
             'eval_train': StreamSegMetrics(num_classes, 'eval_train'),
             'test_same_dom': StreamSegMetrics(num_classes, 'test_same_dom'),
             'test_diff_dom': StreamSegMetrics(num_classes, 'test_diff_dom')
         }
+    elif args.model == 'deeplabv3_mobilenetv2' and args.dataset == 'gta5':
+        metrics = {
+            'idda_test' : StreamSegMetrics(num_classes, 'idda_test'),
+            'test_same_dom': StreamSegMetrics(num_classes, 'test_same_dom'),
+            'test_diff_dom': StreamSegMetrics(num_classes, 'test_diff_dom'),
+            'test_gta5': StreamSegMetrics(num_classes, 'test_gta5')
+        }
+
     elif args.model == 'resnet18' or args.model == 'cnn':
         metrics = {
             'eval_train': StreamClsMetrics(num_classes, 'eval_train'),
@@ -173,71 +247,72 @@ def set_metrics(args):
     return metrics
 
 
-def gen_clients(args, train_datasets, test_datasets, model):
-    if (args.dataset == 'idda') :
-        clients = [[], []]
-        for i, datasets in enumerate([train_datasets, test_datasets]):
-            for ds in datasets:
-                clients[i].append(Centralized(args, ds, model, test_client=i == 1)) #Chiamare centralized Client
+def gen_clients(args, train_datasets, test_train_datasets, test_datasets, model):
+    """
+    Function to create the clients, when using idda in a centralized or federated framework
+    """
+    clients = [[], []]
 
-    elif args.dataset == 'iddaCB':
-        clients = [[], []]
-        for i, datasets in enumerate([train_datasets, test_datasets]):
-            for ds in datasets:
-                clients[i].append(Centralized(args, ds, model, test_client=i == 1))
+    for train_dataset, test_train_dataset in zip(train_datasets, test_train_datasets):
+        clients[0].append(Client(args, train_dataset = train_dataset, test_dataset = test_train_dataset, model = model))
+    
+    for test_dataset in test_datasets:
+        clients[1].append(Client(args, train_dataset=None, test_dataset = test_dataset, model = model, test_client=True))
 
     return clients[0], clients[1]
 
-def get_sweep_transforms(args, config):
-    # TODO: test your data augmentation by changing the transforms here!
-    if args.model == 'deeplabv3_mobilenetv2':
-        rnd_transforms = []
 
-        # Select only the transforms of interest. We take the string and we build the method.
-        # WARNING: omitted '(10)' as argument like in the previous version.
-        # WARNING: not tested due to problems with WandB API.
-        keep = [value for key, value in config.transforms.items() if value is not np.nan] 
-        
-        for i in range(len(keep)):
-            rnd_transforms.append(getattr(sstr, keep[i])) 
-
-        base_transforms = [
-            sstr.RandomResizedCrop((512, 928), scale=(0.5, 2.0)),
-            sstr.ToTensor(),
-            sstr.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-            ]
-        
-        train_transforms = sstr.Compose(rnd_transforms + base_transforms)
-        test_transforms = sstr.Compose(base_transforms)
-
-    else:
-        raise NotImplementedError
+def gen_clients_dom_adapt(args, idda_clients_datasets, test_datasets, model):
+    """
+    Function to create the clients, when using gta5 in a DA framework
+    """
+    clients = [[],[]] # ix=0 clients with idda partition, ix=1 clients with eval and tests partition (idda)
     
-    return train_transforms, test_transforms
+    #Creates the various clients, each one having a partition of the idda dataset
+    for idda_client_dataset in idda_clients_datasets:
+        clients[0].append(Client(args, train_dataset=None, test_dataset = idda_client_dataset, model = model, test_client=True, isTarget=True))
 
-def get_sweep_transforms2(args, config):
-    # TODO: test your data augmentation by changing the transforms here!
+    #Creates 3 test clients: idda_test(file train.txt), idda_same_dom, idda_diff_dom
+    for test_dataset in test_datasets:
+        clients[1].append(Client(args, train_dataset=None, test_dataset = test_dataset, model = model, test_client=True))
+
+    return clients
+
+def get_sweep_transforms(args, config):
+    """
+    Function to generate the transforms to use in the wandb sweep
+    """
     if args.model == 'deeplabv3_mobilenetv2':
         rnd_transforms = []
-
-        if config.rndRot:
-            rnd_transforms.append(sstr.RandomRotation(10))
-        if config.rndHzFlip:
+        configColorJitter = config.get('colorJitter')
+        configRndRot = config.get("rndRot")
+        if configColorJitter.get("active"):
+            rnd_transforms.append(sstr.ColorJitter(brightness=configColorJitter.get("brightness"),
+                                                   contrast=configColorJitter.get("contrast"),
+                                                   saturation=configColorJitter.get("saturation"),
+                                                   hue=configColorJitter.get("hue")))
+        
+        if config.get("rndHzFlip"):
             rnd_transforms.append(sstr.RandomHorizontalFlip())
-        if config.rndVertFlip:
+        if config.get("rndVertFlip"):
             rnd_transforms.append(sstr.RandomVerticalFlip())
-        if config.colorJitter:
-            rnd_transforms.append(sstr.ColorJitter())
+        
+        if configRndRot.get("active"):
+            rnd_transforms.append(sstr.RandomRotation(configRndRot.get("maxDeg"), expand=False))
 
-
-        base_transforms = [
+        base_train_transforms = [
             sstr.RandomResizedCrop((512, 928), scale=(0.5, 2.0)),
             sstr.ToTensor(),
             sstr.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
             ]
         
-        train_transforms = sstr.Compose(rnd_transforms + base_transforms)
-        test_transforms = sstr.Compose(base_transforms)
+        test_transforms = [
+            sstr.ToTensor(),
+            sstr.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+            ]
+        
+        train_transforms = sstr.Compose(rnd_transforms + base_train_transforms)
+        test_transforms = sstr.Compose(test_transforms)
 
     else:
         raise NotImplementedError
@@ -252,71 +327,38 @@ def yaml_to_dict(path):
             print(exc)
 
 def sweeping(args):
+    """
+    Function to perform the wandb sweep both for hyperparameters tuning and transforms tuning
+    """
     wandb.login()
 
-    dict_sweep = {'method' : 'random'}
-    metric = {
-        'name' : 'loss',
-        'goal' : 'minimize'
-    }
-    dict_sweep['metric'] = metric
-    
     if args.wandb ==  'hypTuning':
-        #!togliere commenti per usare yaml
-        #with open('configs/sweep_config.yaml', 'r') as f:
-        #        sweep_config = yaml.safe_load(f)
-
-        parameters = { 
-            'optimizer' : { 'values' : ['Adam', 'SGD', 'Adagrad'],
-                           'distribution' : 'categorical'},
-            'learning_rate' : {'values': [0.01, 0.001, 0.0001, 0.0005, 0.00001]},
-            
-            'weight_decay': {'distribution': 'uniform',
-                                'min': 0.0,
-                                'max': 1.0},
-            'momentum' : {'distribution': 'uniform',
-                                'min': 0.0,
-                                'max': 1.0},
-            'scheduler' : {'values' : ['ExponentialLR', 'StepLR', None],
-                           'distribution' : 'categorical'
-                           },
-
-            'gamma' : {'values':[0.01, 0.1, 0.33, 0.5, 0.7, 1.0]}
-            
-        }
-
-        #parameters = { 
-        #    'optimizer' : { 'value' : 'Adam'},
-        #
-        #    'learning_rate' : {'values': [0.0005, 0.00045],
-        #                       'distribution': 'categorical'}
-        #}
-
-        dict_sweep['parameters'] = parameters
-
-        dict_sweep['early_terminate'] = {'type' : 'hyperband', 'min_iter' : 3, 'eta': 2}
+        with open('sweep_configs/' + args.sweep_config, 'r') as f:
+                dict_sweep = yaml.safe_load(f)
     
     elif args.wandb == 'transformTuning':
-        parameters = {  'rndRot' : {'values':[True, False]},
-                        'rndHzFlip' : {'values':[True, False]},
-                        'rndVertFlip' : {'values':[True, False]},
-                        'colorJitter' : {'values':[True, False]},
-                                   }
-        dict_sweep['parameters'] = parameters
-        
+        with open('sweep_configs/' + args.sweep_config, 'r') as f:
+                dict_sweep = yaml.safe_load(f)
 
-    project_name = "test_hyp_sweeps_22-5"
+
+    project_name = args.wb_project_name
     if args.sweep_id == None:
         sweep_id = wandb.sweep(dict_sweep, project = project_name)
-
     else:
         sweep_id = args.sweep_id
 
-    train_func = lambda: sweep_train(args=args)
-    wandb.agent(sweep_id = sweep_id, function = train_func, count = 20 ,project = project_name)
+    if args.dataset == 'idda':
+        train_func = lambda: sweep_train(args=args)
+    elif args.dataset == 'gta5':
+        train_func = lambda: sweep_train_DA(args=args)
+
+    wandb.agent(sweep_id = sweep_id, function = train_func, count = 10, project = project_name)
 
 
 def sweep_train(args, config = None):
+    """
+    Train function to use in the wandb sweep
+    """
     
     with wandb.init(config = config):
         config = wandb.config
@@ -326,24 +368,60 @@ def sweep_train(args, config = None):
         print('Done.')
 
         if args.wandb == 'transformTuning':
-            train_transforms, test_transforms = get_sweep_transforms2(args, config)
-            train_datasets, test_datasets = get_datasets(args=args, train_transforms = train_transforms , test_transforms = test_transforms)
-            train_clients, test_clients = gen_clients(args, train_datasets, test_datasets, model)
+            train_transforms, test_transforms = get_sweep_transforms(args, config)
+            print(train_transforms)
+            print(test_transforms)
+            train_datasets, test_train_datasets, test_datasets = get_datasets(args=args, train_transforms = train_transforms , test_transforms = test_transforms)
+            train_clients, test_clients = gen_clients(args, train_datasets, test_train_datasets, test_datasets, model)
             metrics = set_metrics(args)
-            server = Server(args, train_clients, test_clients, model, metrics)
-            path = 'configs/runSingola.yaml'
+            path = 'configs/' + args.config
             configHyp = yaml_to_dict(path)
-            server.distribute_config_dict(configHyp)
+            server = Server(args, train_clients, test_clients, model, metrics, configHyp)
 
 
         elif args.wandb == 'hypTuning':
-            train_datasets, test_datasets = get_datasets(args=args)
-            train_clients, test_clients = gen_clients(args, train_datasets, test_datasets, model)
+            train_datasets, test_train_datasets, test_datasets = get_datasets(args=args)
+            train_clients, test_clients = gen_clients(args, train_datasets, test_train_datasets, test_datasets, model)
             metrics = set_metrics(args)
-            server = Server(args, train_clients, test_clients, model, metrics)
-            server.distribute_config_dict(config)
+            server = Server(args, train_clients, test_clients, model, metrics, config)
         
-        server.train() 
+        server.train()
+        server.eval_train()
+        server.test()
+
+def sweep_train_DA(args, config = None):
+    """
+    Train function to use in the wandb sweep for domain adaptation task
+    """
+    
+    with wandb.init(config = config):
+        config = wandb.config
+        print(f'Initializing model...')
+        model = model_init(args)
+        model.cuda()
+        print('Done.')
+        metrics = set_metrics(args)
+
+        if args.wandb == 'transformTuning':
+            transformConfig = config
+            train_transforms, test_transforms = get_sweep_transforms(args, transformConfig)
+            print(train_transforms)
+            print(test_transforms)
+            train_dataset, test_dataset_gta ,idda_clients_datasets, test_datasets = get_datasets_DA(args=args, train_transforms = train_transforms , test_transforms = test_transforms)
+            path = 'configs/' + args.config
+            configHyp = yaml_to_dict(path)
+
+        elif args.wandb == 'hypTuning':
+            train_dataset, test_dataset_gta, idda_clients_datasets, test_datasets = get_datasets_DA(args)
+            configHyp = config
+
+        idda_clients, test_clients = gen_clients_dom_adapt(args, idda_clients_datasets, test_datasets, model)
+        server = ServerGTA(args, source_dataset=train_dataset, source_dataset_test=test_dataset_gta,target_clients=idda_clients, test_clients=test_clients, model=model, metrics=metrics)
+        print(configHyp)
+        server.create_opt_sch(configHyp)
+
+        server.train()
+        server.test()
 
 
 def main():
@@ -351,59 +429,61 @@ def main():
     args = parser.parse_args()
     set_seed(args.seed)
 
-    #print(f'Initializing model...')
-    #model = model_init(args)
-    #model.cuda()
-    #print('Done.')
-
     if args.wandb == 'hypTuning' or args.wandb == 'transformTuning':
+        if args.sweep_config == None:
+            sys.exit('An error occurred: you must specify a sweep_config file in the args!')
+
         sweeping(args)
     
-    elif args.wandb == 'singleRun':
-        wandb.login()
-
-        with open('configs/runSingola.yaml', 'r') as f:
-            yaml_config = yaml.safe_load(f)
-
-        wandb.init(
-            project = 'singleRuns',
-            config = yaml_config)
+    else:
+        #get the configuration from a file given in the command line
+        with open('configs/' + args.config, 'r') as f:
+            config = yaml.safe_load(f)
         
-        config = wandb.config
-
+        if args.wandb == 'singleRun':
+            wandb.login()
+            wandb.init(
+                project = args.wb_project_name,
+                config = config)
+            config = wandb.config
+        
         print(f'Initializing model...')
         model = model_init(args)
         model.cuda()
         print('Done.')
         print('Generate datasets...')
-        train_datasets, test_datasets = get_datasets(args)
-        print('Done.')
 
         metrics = set_metrics(args)
-        train_clients, test_clients = gen_clients(args, train_datasets, test_datasets, model)
-        server = Server(args, train_clients, test_clients, model, metrics)
         
-        server.distribute_config_dict(config)
-        server.train()
-        
+        if args.dataset == 'gta5':
+            train_dataset, test_dataset_gta, idda_clients_datasets, test_datasets = get_datasets_DA(args)
+            print('Done.')
+            idda_clients, test_clients = gen_clients_dom_adapt(args, idda_clients_datasets, test_datasets, model)
+            server = ServerGTA(args, source_dataset=train_dataset, source_dataset_test=test_dataset_gta, target_clients=idda_clients, test_clients=test_clients, model=model, metrics=metrics)
+            
+            if args.fda.lower() == 'true': #if FDA is active
+                print('Extracting stlyes from clients...')
+                server.load_styles() #extract_styles from clients
+                server.apply_styles() #apply styles to source dataset
+                print('\nDone')
 
-    elif args.wandb == None:
-        print(f'Initializing model...')
-        model = model_init(args)
-        model.cuda()
-        print('Done.')
-        print('Generate datasets...')
-        train_datasets, test_datasets = get_datasets(args)
-        print('Done.')
+            server.create_opt_sch(config=config)
+            if args.checkpoint_to_load != None:
+                server.load_checkpoint()
+            server.train()
 
-        metrics = set_metrics(args)
-        train_clients, test_clients = gen_clients(args, train_datasets, test_datasets, model)
-        server = Server(args, train_clients, test_clients, model, metrics)
-        path = 'configs/runSingola.yaml'
-        config = yaml_to_dict(path)
-        server.distribute_config_dict(config)
-        
-        server.train()
+        elif args.dataset == 'idda':
+            train_datasets, test_train_datasets, test_datasets = get_datasets(args)
+            print('Done.')
+            train_clients, test_clients = gen_clients(args, train_datasets, test_train_datasets, test_datasets, model)
+            server = Server(args, train_clients, test_clients, model, metrics, config)
+            server.train()
+            #server.eval_train()
+            #server.test()
+            if args.name_checkpoint_to_save != None:
+                server.checkpoint_recap()
+            if args.framework == 'federated' and args.r != None:
+                server.download_mious_as_csv()
 
 
 if __name__ == '__main__':

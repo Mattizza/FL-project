@@ -1,0 +1,26 @@
+method : grid
+
+metric:
+  name: loss
+  goal: minimize
+
+parameters:
+  optimizer:
+    parameters:
+
+      name: 
+        value: "AdamW"
+  
+      lr:
+        values: [0.0002, 0.0003, 0.0004, 0.0005]
+
+      weight_decay:
+        values: [0.01, 0.1, 0.2, 0.8, 0.9]
+  
+  scheduler:
+    parameters:
+      name:
+        value: "ReduceLROnPlateau"
+  
+      patience:
+        value: 2

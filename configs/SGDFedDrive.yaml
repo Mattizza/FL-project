@@ -1,0 +1,7 @@
+# SGD lr = 0.1, momentum = 0.9 scheduler = pol
+optimizer:
+  name: SGD
+  lr: 0.1
+  momentum: 0.9
+scheduler:
+  name: None

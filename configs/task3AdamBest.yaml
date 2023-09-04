@@ -1,0 +1,7 @@
+optimizer:
+  name: Adam
+  lr: 0.000043
+  weight_decay: 0.001
+
+scheduler:
+  name: None

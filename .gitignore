@@ -1,5 +1,11 @@
 *.pyc
-idda/
 venv
 *.log
 wandb
+*.png
+*.pth.tar
+*.csv
+.vscode
+FedDyn
+checkpoints/gta/04_08_gta_FDA
+toBeRemoved

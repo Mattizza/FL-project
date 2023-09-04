@@ -1,0 +1,37 @@
+method : grid
+
+metric:
+  name: loss
+  goal: minimize
+
+parameters:
+
+  rndRot:
+    parameters:
+      active:
+        value: True
+      maxDeg:
+        value: 90
+  
+  rndHzFlip:
+    value: True
+
+  rndVertFlip:
+    value: True
+
+  colorJitter:
+    parameters:
+      active:
+        value: True
+
+      brightness:
+        values: [50, 51]
+
+      contrast:
+        values: [25, 26]
+      
+      saturation:
+        values: [50, 51]
+      
+      hue:
+        values: [0, 0.1]
