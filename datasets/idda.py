@@ -36,11 +36,11 @@ class IDDADataset(VisionDataset):
     @staticmethod
     def get_mapping():
         """
-        mappa le labels che non usiamo a 255 e scala le altre.
-        Esempio:
-        mappa = [255, 0, 1, 2]
-        originale = [3, 2,   0, 2, 1]
-        mappato =   [2, 1, 255, 1, 0]
+        maps labels we do not use to 255 and shift the others.
+        Example:
+        maps = [255, 0, 1, 2]
+        original = [3, 2,   0, 2, 1]
+        mapped =   [2, 1, 255, 1, 0]
         """
         classes = class_eval
         mapping = np.zeros((256,), dtype=np.int64) + 255
@@ -102,7 +102,7 @@ class IDDADataset(VisionDataset):
         if self.target_transform is not None and self.pseudoLBeforeTransforms == False:
             label = self.target_transform(label)
         
-        #Da rimuovere if sotto (solo per debugging)
+        #"if" just for debugging
         if  self.pseudoLBeforeTransforms:    
             print("\nSecondo check:")
             print((label == pseudo_lab.cpu()).unique())

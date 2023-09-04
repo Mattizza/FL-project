@@ -237,8 +237,7 @@ class Client:
         """
             Simply call the method to create the optimizer and the scheduler
         """
-        #il file config che riceve deve essere un dizionario con chiavi esterne "optimizer" e "scheduler"
-        #nel se usi config = wand.config viene automaticamente fatto in questo modo 
+        #the config file must be a dictionary with keys "optimizer" and "scheduler"
         optimizer = self._configure_optimizer(config)
         scheduler = self._configure_scheduler(config, optimizer)
         return optimizer, scheduler
